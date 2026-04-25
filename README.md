@@ -34,10 +34,11 @@ Hover over any line to see:
 If you have GitLens, git-graph, or githistory installed the extension defers hover to them to avoid duplication.
 
 ### Author color management
-Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every author in the current file. Each row shows:
+Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every contributor in the repository. Each row shows:
 - 8 age-preview swatches showing how the author's color fades over time
 - Author name and email
-- Live LOC (lines currently attributed to this author across the whole repo) and all-time LOC (every line they ever committed, including deleted ones)
+- **Live LOC** — lines currently attributed to this author across the whole repo (derived from `git blame`)
+- **All-time LOC** — every line they ever added, including deleted ones (derived from `git log --numstat`)
 - A hue slider to override the auto-generated hue
 - A Reset button to revert to the auto-generated hue
 
@@ -172,4 +173,4 @@ On activation (and whenever you switch files or save), the extension runs `git b
 
 Age is bucketed relative to an age window anchored at the current time. If `ageWindowDays` is `0` the window stretches back to the oldest commit in the repo, so the full saturation range is always used. If a specific number of days is set, anything older than that window is clamped to minimum saturation.
 
-The Show Authors panel runs `git blame` across every tracked file in the repo to compute live LOC per author, and `git log --numstat` to compute all-time LOC.
+The Show Authors panel runs `git diff --numstat` against the empty tree to enumerate all text files in the repo (binary files such as compiled artifacts and images are automatically excluded), then runs `git blame --line-porcelain` on each text file to compute live LOC per author. All-time LOC is computed with `git log --numstat --no-merges`.
