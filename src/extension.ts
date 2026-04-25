@@ -164,12 +164,15 @@ export function activate(context: vscode.ExtensionContext): void {
       const cfg = vscode.workspace.getConfiguration('gitBlameColors');
       const width = Math.max(2, cfg.get<number>('blockWidth', 6));
 
+      // Non-breaking spaces give the `before` element full line-height so that
+      // backgroundColor is actually visible. Using `color` on a `before` element
+      // is unreliable — VS Code's editor CSS overrides it.
       const dt = vscode.window.createTextEditorDecorationType({
-        before: {
-          contentText: '',
+        after: {
+          contentText: '\u200a',
           backgroundColor: color,
-          width: `${width}px`,
-          margin: `0 ${width + 4}px 0 0`,
+          margin: '0 0 0 10px',
+          width: '4px',
         },
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
       });
@@ -213,8 +216,8 @@ export function activate(context: vscode.ExtensionContext): void {
     blameData.set(doc.uri.toString(), blameMap);
 
     const cfg = vscode.workspace.getConfiguration('gitBlameColors');
-    const saturation = cfg.get<number>('saturation', 70);
-    const lightness = cfg.get<number>('lightness', 55);
+    const saturation = cfg.get<number>('saturation', 30);
+    const lightness = cfg.get<number>('lightness', 45);
 
     // Group line ranges by decoration key (author email or '__uncommitted__')
     const rangesByKey = new Map<string, { ranges: vscode.Range[]; color: string }>();
@@ -274,7 +277,7 @@ export function activate(context: vscode.ExtensionContext): void {
           md.appendMarkdown(` \\<${escapeMarkdown(blame.authorEmail)}\\>`);
         }
         md.appendMarkdown(`\n\n`);
-        md.appendMarkdown(`$(calendar) ${blame.authorTime.toLocaleString()}\n\n`);
+        md.appendMarkdown(`$(calendar) ${blame.authorTime.toLocaleString()} *(${timeAgo(blame.authorTime)})*\n\n`);
         md.appendMarkdown(`---\n\n`);
         md.appendMarkdown(`*${escapeMarkdown(blame.summary)}*`);
       }
@@ -349,6 +352,21 @@ export function deactivate(): void {
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
+
+function timeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  const years = Math.floor(months / 12);
+  return `${years}y ago`;
+}
 
 function escapeMarkdown(text: string): string {
   return text.replace(/[\\`*_{}[\]()#+\-.!|]/g, '\\$&');

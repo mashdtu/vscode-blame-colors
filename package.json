@@ -34,14 +34,14 @@
         },
         "gitBlameColors.saturation": {
           "type": "number",
-          "default": 70,
+          "default": 30,
           "minimum": 0,
           "maximum": 100,
           "description": "HSL saturation (0–100) for author colors."
         },
         "gitBlameColors.lightness": {
           "type": "number",
-          "default": 55,
+          "default": 45,
           "minimum": 0,
           "maximum": 100,
           "description": "HSL lightness (0–100) for author colors."
