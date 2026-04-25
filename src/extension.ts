@@ -5,10 +5,6 @@ import { promisify } from 'util';
 
 const execFileAsync = promisify(execFile);
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
 interface BlameInfo {
   commitHash: string;
   author: string;
@@ -20,18 +16,6 @@ interface BlameInfo {
 
 const UNCOMMITTED_HASH = '0'.repeat(40);
 
-// ---------------------------------------------------------------------------
-// Git blame parsing
-// ---------------------------------------------------------------------------
-
-/**
- * Runs `git blame --porcelain` on the given absolute file path and returns a
- * map of 0-based line numbers to their BlameInfo.  Returns null when the file
- * is not tracked by git or git is unavailable.
- *
- * execFile is used (not exec) to avoid any shell-injection risk because
- * filePath is passed as a discrete argument, never interpolated into a string.
- */
 async function runGitBlame(filePath: string): Promise<Map<number, BlameInfo> | null> {
   try {
     const { stdout } = await execFileAsync(
@@ -39,7 +23,7 @@ async function runGitBlame(filePath: string): Promise<Map<number, BlameInfo> | n
       ['blame', '--porcelain', '--', filePath],
       {
         cwd: path.dirname(filePath),
-        maxBuffer: 20 * 1024 * 1024, // 20 MB – enough for very large files
+        maxBuffer: 20 * 1024 * 1024,
       },
     );
     return parsePortcelain(stdout);
@@ -48,25 +32,6 @@ async function runGitBlame(filePath: string): Promise<Map<number, BlameInfo> | n
   }
 }
 
-/**
- * Parses the output of `git blame --porcelain`.
- *
- * Porcelain format summary
- * ─────────────────────────
- * First occurrence of a commit:
- *   <40-char-hash> <orig-line> <final-line> <group-size>
- *   author <name>
- *   author-mail <email>
- *   author-time <unix>
- *   author-tz <tz>
- *   committer …
- *   summary <message>
- *   filename <name>
- *   \t<line content>
- *
- * Subsequent occurrences of the same commit only repeat the first header line
- * and the \t content line; no metadata lines are emitted again.
- */
 function parsePortcelain(output: string): Map<number, BlameInfo> {
   const result = new Map<number, BlameInfo>();
   const cache = new Map<string, Partial<BlameInfo>>();
@@ -74,7 +39,6 @@ function parsePortcelain(output: string): Map<number, BlameInfo> {
   let i = 0;
 
   while (i < lines.length) {
-    // Header: <hash> <orig> <final> [<count>]
     const headerMatch = lines[i].match(/^([0-9a-f]{40}) \d+ (\d+)/);
     if (!headerMatch) {
       i++;
@@ -82,7 +46,7 @@ function parsePortcelain(output: string): Map<number, BlameInfo> {
     }
 
     const hash = headerMatch[1];
-    const finalLine = parseInt(headerMatch[2], 10) - 1; // convert to 0-based
+    const finalLine = parseInt(headerMatch[2], 10) - 1;
 
     if (!cache.has(hash)) {
       cache.set(hash, {});
@@ -91,7 +55,6 @@ function parsePortcelain(output: string): Map<number, BlameInfo> {
 
     i++;
 
-    // Read metadata lines until the tab-prefixed content line
     while (i < lines.length && !lines[i].startsWith('\t')) {
       const l = lines[i];
       if (l.startsWith('author ') && entry.author === undefined) {
@@ -106,7 +69,7 @@ function parsePortcelain(output: string): Map<number, BlameInfo> {
       i++;
     }
 
-    i++; // skip the \t content line
+    i++;
 
     const isUncommitted = hash === UNCOMMITTED_HASH;
     result.set(finalLine, {
@@ -122,10 +85,6 @@ function parsePortcelain(output: string): Map<number, BlameInfo> {
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Color helpers
-// ---------------------------------------------------------------------------
-
 function hashCode(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) {
@@ -135,45 +94,26 @@ function hashCode(s: string): number {
 }
 
 function authorColor(email: string, saturation: number, lightness: number): string {
-  const hue = hashCode(email || 'unknown') % 360;
+  const hue = (hashCode(email || 'unknown') % 360 + 60) % 360;
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 }
 
-// ---------------------------------------------------------------------------
-// Extension
-// ---------------------------------------------------------------------------
-
 export function activate(context: vscode.ExtensionContext): void {
-  // decoration type keyed by author email (or '__uncommitted__')
   const decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
 
-  // cached blame data keyed by document URI string
   const blameData = new Map<string, Map<number, BlameInfo>>();
 
-  // in-flight requests keyed by document URI string – used to debounce
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
 
   let enabled = true;
 
-  // -------------------------------------------------------------------------
-  // Decoration-type factory
-  // -------------------------------------------------------------------------
-
   function getDecorationType(key: string, color: string): vscode.TextEditorDecorationType {
     if (!decorationTypes.has(key)) {
-      const cfg = vscode.workspace.getConfiguration('gitBlameColors');
-      const width = Math.max(2, cfg.get<number>('blockWidth', 6));
-
-      // Non-breaking spaces give the `before` element full line-height so that
-      // backgroundColor is actually visible. Using `color` on a `before` element
-      // is unreliable — VS Code's editor CSS overrides it.
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16"><rect width="4" height="16" fill="${color}"/></svg>`;
+      const iconUri = vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
       const dt = vscode.window.createTextEditorDecorationType({
-        after: {
-          contentText: '\u200a',
-          backgroundColor: color,
-          margin: '0 0 0 10px',
-          width: '4px',
-        },
+        gutterIconPath: iconUri,
+        gutterIconSize: 'contain',
         rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
       });
       decorationTypes.set(key, dt);
@@ -181,10 +121,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     return decorationTypes.get(key)!;
   }
-
-  // -------------------------------------------------------------------------
-  // Apply / clear decorations
-  // -------------------------------------------------------------------------
 
   function clearDecorations(editor: vscode.TextEditor): void {
     for (const dt of decorationTypes.values()) {
@@ -200,7 +136,6 @@ export function activate(context: vscode.ExtensionContext): void {
     const filePath = doc.uri.fsPath;
     const blameMap = await runGitBlame(filePath);
 
-    // Editor may have changed while git blame was running
     if (vscode.window.activeTextEditor?.document !== doc &&
         !vscode.window.visibleTextEditors.some(e => e.document === doc)) {
       return;
@@ -216,10 +151,9 @@ export function activate(context: vscode.ExtensionContext): void {
     blameData.set(doc.uri.toString(), blameMap);
 
     const cfg = vscode.workspace.getConfiguration('gitBlameColors');
-    const saturation = cfg.get<number>('saturation', 30);
-    const lightness = cfg.get<number>('lightness', 45);
+    const saturation = cfg.get<number>('saturation', 60);
+    const lightness = cfg.get<number>('lightness', 60);
 
-    // Group line ranges by decoration key (author email or '__uncommitted__')
     const rangesByKey = new Map<string, { ranges: vscode.Range[]; color: string }>();
 
     for (const [line, info] of blameMap) {
@@ -240,9 +174,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const dt = getDecorationType(key, color);
       editor.setDecorations(dt, ranges);
     }
+
   }
 
-  // Debounced wrapper so rapid editor switches don't flood git
   function scheduleApply(editor: vscode.TextEditor, delayMs = 150): void {
     const key = editor.document.uri.toString();
     const existing = pending.get(key);
@@ -254,43 +188,36 @@ export function activate(context: vscode.ExtensionContext): void {
     pending.set(key, id);
   }
 
-  // -------------------------------------------------------------------------
-  // Hover provider
-  // -------------------------------------------------------------------------
-
-  const hoverProvider = vscode.languages.registerHoverProvider({ scheme: 'file' }, {
-    provideHover(document, position): vscode.Hover | null {
-      if (!enabled) return null;
-      const blame = blameData.get(document.uri.toString())?.get(position.line);
-      if (!blame) return null;
-
-      const md = new vscode.MarkdownString(undefined, true);
-      md.isTrusted = true;
-      md.supportThemeIcons = true;
-
-      if (blame.isUncommitted) {
-        md.appendMarkdown(`$(git-commit) **Not yet committed**`);
-      } else {
-        md.appendMarkdown(`$(git-commit) \`${blame.commitHash.slice(0, 8)}\`\n\n`);
-        md.appendMarkdown(`$(person) **${escapeMarkdown(blame.author)}**`);
-        if (blame.authorEmail) {
-          md.appendMarkdown(` \\<${escapeMarkdown(blame.authorEmail)}\\>`);
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider({ scheme: 'file' }, {
+      async provideHover(document, position): Promise<vscode.Hover | null> {
+        if (!enabled) return null;
+        if (!blameData.has(document.uri.toString())) {
+          const map = await runGitBlame(document.uri.fsPath);
+          if (map) blameData.set(document.uri.toString(), map);
         }
-        md.appendMarkdown(`\n\n`);
-        md.appendMarkdown(`$(calendar) ${blame.authorTime.toLocaleString()} *(${timeAgo(blame.authorTime)})*\n\n`);
-        md.appendMarkdown(`---\n\n`);
-        md.appendMarkdown(`*${escapeMarkdown(blame.summary)}*`);
-      }
-
-      return new vscode.Hover(md);
-    },
-  });
-
-  context.subscriptions.push(hoverProvider);
-
-  // -------------------------------------------------------------------------
-  // Commands
-  // -------------------------------------------------------------------------
+        const blame = blameData.get(document.uri.toString())?.get(position.line);
+        if (!blame) return null;
+        const md = new vscode.MarkdownString(undefined, true);
+        md.isTrusted = true;
+        md.supportThemeIcons = true;
+        if (blame.isUncommitted) {
+          md.appendMarkdown(`$(git-commit) **Not yet committed**`);
+        } else {
+          md.appendMarkdown(`$(git-commit) \`${blame.commitHash.slice(0, 8)}\`\n\n`);
+          md.appendMarkdown(`$(person) **${escapeMarkdown(blame.author)}**`);
+          if (blame.authorEmail) {
+            md.appendMarkdown(` \\<${escapeMarkdown(blame.authorEmail)}\\>`);
+          }
+          md.appendMarkdown(`\n\n`);
+          md.appendMarkdown(`$(calendar) ${blame.authorTime.toLocaleString()} *(${timeAgo(blame.authorTime)})*\n\n`);
+          md.appendMarkdown(`---\n\n`);
+          md.appendMarkdown(`*${escapeMarkdown(blame.summary)}*`);
+        }
+        return new vscode.Hover(md);
+      },
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('gitBlameColors.toggle', () => {
@@ -317,10 +244,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // -------------------------------------------------------------------------
-  // Event listeners
-  // -------------------------------------------------------------------------
-
   context.subscriptions.push(
     vscode.window.onDidChangeActiveTextEditor(editor => {
       if (editor) scheduleApply(editor);
@@ -339,19 +262,12 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // Apply to all visible editors on activation
   for (const editor of vscode.window.visibleTextEditors) {
     scheduleApply(editor, 0);
   }
 }
 
-export function deactivate(): void {
-  // Decoration types registered via context.subscriptions are disposed automatically.
-}
-
-// ---------------------------------------------------------------------------
-// Utilities
-// ---------------------------------------------------------------------------
+export function deactivate(): void {}
 
 function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
