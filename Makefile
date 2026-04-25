@@ -30,13 +30,10 @@ release: compile
 	  fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');\
 	  console.log('Bumped to '+p.version);"
 	@mkdir -p $(DIST)
-	@$(MAKE) --no-print-directory package
-	$(eval VERSION := $(shell node -p "require('./package.json').version"))
-	$(eval VSIX    := $(DIST)/$(shell node -p "const p=require('./package.json'); p.name+'-'+p.version+'.vsix'"))
-	@if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$(VERSION)"; fi
-	@git tag v$(VERSION) 2>/dev/null || echo "Tag v$(VERSION) already exists, skipping."
-	@git push origin v$(VERSION) 2>/dev/null || echo "Tag already on remote, skipping push."
-	@if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$(VERSION)"; fi
-	@git tag v$(VERSION) 2>/dev/null || echo "Tag v$(VERSION) already exists, skipping."
-	@git push origin v$(VERSION) 2>/dev/null || echo "Tag already on remote, skipping push."
-	gh release create v$(VERSION) $(VSIX) --title "v$(VERSION)" --notes "Release v$(VERSION)"
+	@VERSION=$$(node -p "require('./package.json').version"); \
+	 VSIX="$(DIST)/$$(node -p "const p=require('./package.json'); p.name+'-'+p.version+'.vsix'")"; \
+	 vsce package --out $(DIST)/ && \
+	 if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$$VERSION"; fi && \
+	 (git tag "v$$VERSION" 2>/dev/null || echo "Tag v$$VERSION already exists, skipping.") && \
+	 (git push origin "v$$VERSION" 2>/dev/null || echo "Tag already on remote, skipping push.") && \
+	 gh release create "v$$VERSION" "$$VSIX" --title "v$$VERSION" --notes "Release v$$VERSION"
