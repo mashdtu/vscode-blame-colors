@@ -24,7 +24,7 @@ export function showAuthorsPanel(
   return new Promise((resolve) => {
     const panel = vscode.window.createWebviewPanel(
       "gitBlameAuthors",
-      "Git Blame: Author Colors",
+      "Git Blame Author Colors",
       vscode.ViewColumn.Active,
       { enableScripts: true },
     );
