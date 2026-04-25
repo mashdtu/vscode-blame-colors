@@ -7,7 +7,20 @@ Visualize git blame directly in the editor gutter. Each line gets a colored bloc
 ## Features
 
 ### Gutter color blocks
-A thin colored block appears in the gutter beside every line. The hue is unique per author and consistent across files. Commits fade progressively toward grey the older they are: the newest commit in a file is fully saturated, the oldest is nearly monochrome, with four levels of aging in between.
+A thin colored block appears in the gutter beside every line. The hue is unique per author and consistent across files. Commits fade toward grey the older they are, relative to the age range of the current file.
+
+Age is split into 6 evenly-spaced buckets:
+
+| Bucket | Age (relative to file) | Saturation (default) |
+|---|---|---|
+| 1 (newest) | youngest 1/6 | 50% |
+| 2 | 2nd 1/6 | 42% |
+| 3 | 3rd 1/6 | 34% |
+| 4 | 4th 1/6 | 26% |
+| 5 | 5th 1/6 | 18% |
+| 6 (oldest) | oldest 1/6 | 10% |
+
+Saturation scales with the `gitBlameColors.saturation` setting. The minimum is always 10%.
 
 ### Hover for commit details
 Hover over any line to see:
