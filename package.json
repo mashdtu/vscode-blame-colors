@@ -1,7 +1,8 @@
 {
+  "publisher": "mashdtu",
   "name": "git-blame-colors",
   "displayName": "Git Blame Colors",
-  "description": "Visualize git blame with a colored block per line — color maps to the author, hover for commit details.",
+  "description": "Visualize git blame with colors.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.74.0"

@@ -36,18 +36,24 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.showAuthorsPanel = showAuthorsPanel;
 const vscode = __importStar(require("vscode"));
 function showAuthorsPanel(authors, sat, light) {
-    return new Promise(resolve => {
-        const panel = vscode.window.createWebviewPanel('gitBlameAuthors', 'Git Blame — Author Colors', vscode.ViewColumn.Active, { enableScripts: true });
-        const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const rows = authors.map(a => `<tr>
+    return new Promise((resolve) => {
+        const panel = vscode.window.createWebviewPanel("gitBlameAuthors", "Git Blame — Author Colors", vscode.ViewColumn.Active, { enableScripts: true });
+        const esc = (s) => s
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        const rows = authors
+            .map((a) => `<tr>
         <td><div class="swatch" style="background: hsl(${a.hue}, ${sat}%, ${light}%)"></div></td>
         <td class="name">${esc(a.author)}</td>
         <td class="email">${esc(a.email)}</td>
-        <td class="lines">${a.lines} line${a.lines === 1 ? '' : 's'}</td>
+        <td class="lines">${a.lines} line${a.lines === 1 ? "" : "s"}</td>
         <td><input type="range" min="0" max="359" value="${a.hue}" class="hue-slider"
              data-email="${esc(a.email)}" data-default-hue="${a.defaultHue}"></td>
         <td><button class="reset" data-email="${esc(a.email)}">Reset</button></td>
-      </tr>`).join('\n');
+      </tr>`)
+            .join("\n");
         panel.webview.html = `<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><style>
   body { font-family: var(--vscode-font-family); background: var(--vscode-editor-background);
@@ -126,13 +132,17 @@ function showAuthorsPanel(authors, sat, light) {
   </script>
 </body></html>`;
         let resolved = false;
-        panel.webview.onDidReceiveMessage(msg => {
+        panel.webview.onDidReceiveMessage((msg) => {
             resolved = true;
             panel.dispose();
-            resolve(msg.type === 'apply' ? { hues: msg.hues, reset: msg.reset ?? [] } : undefined);
+            resolve(msg.type === "apply"
+                ? { hues: msg.hues, reset: msg.reset ?? [] }
+                : undefined);
         });
-        panel.onDidDispose(() => { if (!resolved)
-            resolve(undefined); });
+        panel.onDidDispose(() => {
+            if (!resolved)
+                resolve(undefined);
+        });
     });
 }
 //# sourceMappingURL=colorPicker.js.map
