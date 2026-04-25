@@ -36,4 +36,4 @@ release: compile
 	 if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$$VERSION"; fi && \
 	 (git tag "v$$VERSION" 2>/dev/null || echo "Tag v$$VERSION already exists, skipping.") && \
 	 (git push origin "v$$VERSION" 2>/dev/null || echo "Tag already on remote, skipping push.") && \
-	 gh release create "v$$VERSION" "$$VSIX" --title "v$$VERSION" --notes "Release v$$VERSION"
+	 gh release create "v$$VERSION" "$$VSIX" --title "Release v$$VERSION" --notes "Release v$$VERSION"
