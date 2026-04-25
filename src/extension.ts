@@ -180,7 +180,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     if (!isFinite(minTime)) minTime = maxTime = Date.now();
     const timeRange = Math.max(maxTime - minTime, 1);
-    const SAT_LEVELS = [1.0, 0.75, 0.55, 0.38, 0.25, 0.14];
+    const SAT_LEVELS = [1.0, 0.84, 0.68, 0.52, 0.36, 0.20];
 
     const groups = new Map<
       string,
@@ -200,7 +200,7 @@ export function activate(context: vscode.ExtensionContext): void {
           Math.floor(ageFactor * SAT_LEVELS.length),
         );
         key = `${info.authorEmail}:${bucket}`;
-        color = `hsl(${resolveHue(info.authorEmail)}, ${(sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
+        color = `hsl(${resolveHue(info.authorEmail)}, ${Math.max(10, sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
       }
       if (!groups.has(key)) groups.set(key, { color, decs: [] });
       groups.get(key)!.decs.push({

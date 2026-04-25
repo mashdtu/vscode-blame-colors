@@ -39,7 +39,7 @@
         },
         "gitBlameColors.saturation": {
           "type": "number",
-          "default": 38,
+          "default": 50,
           "minimum": 0,
           "maximum": 100,
           "description": "HSL saturation (0–100) for author colors."
