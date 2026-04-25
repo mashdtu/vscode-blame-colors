@@ -81,13 +81,13 @@ Adjust saturation and lightness via **File > Preferences > Settings** and search
 This extension is not published to the VS Code Marketplace. Install it from the packaged `.vsix` file.
 
 **Prerequisites:** Node.js 18+, npm, and `vsce`:
-```
+```sh
 npm install -g @vscode/vsce
 ```
 
 #### Option A - using the Makefile (Linux / macOS)
 
-```bash
+```sh
 git clone https://github.com/mashdtu/vscode-blame-colors
 cd vscode-blame-colors
 npm install
@@ -107,7 +107,7 @@ Other useful targets:
 
 #### Option B - manual steps (Linux / macOS / Windows)
 
-```bash
+```sh
 git clone https://github.com/mashdtu/vscode-blame-colors
 cd vscode-blame-colors
 npm install
@@ -118,7 +118,7 @@ vsce package
 This produces `git-blame-colors-0.0.1.vsix`. Install it:
 
 **From the terminal:**
-```bash
+```sh
 code --install-extension git-blame-colors-0.0.1.vsix
 ```
 
@@ -132,7 +132,7 @@ code --install-extension git-blame-colors-0.0.1.vsix
 
 The Makefile requires `make` (available via Git Bash, WSL, or `winget install GnuWin32.Make`). If you prefer plain PowerShell:
 
-```powershell
+```sh
 git clone https://github.com/mashdtu/vscode-blame-colors
 cd vscode-blame-colors
 npm install
@@ -147,7 +147,7 @@ code --install-extension git-blame-colors-0.0.1.vsix
 
 Open the Extensions view, find **Git Blame Colors**, click the gear icon, and choose **Uninstall**. Or from a terminal:
 
-```bash
+```sh
 code --uninstall-extension mashdtu.git-blame-colors
 ```
 
