@@ -13,22 +13,24 @@ export function buildAuthorsHtml(
   sat: number,
   light: number,
 ): string {
-  const SAT_LEVELS = [1.0, 0.84, 0.68, 0.52, 0.36, 0.20];
-
+  const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
   const rows = authors
     .map((a) => {
       const ageDots = SAT_LEVELS.map(
         (m) =>
           `<div class="age-dot" style="background: hsl(${a.hue}, ${Math.max(10, sat * m).toFixed(1)}%, ${light}%)"></div>`,
       ).join("");
-      return `<tr>
-        <td><div class="age-bar" data-hue="${a.hue}">${ageDots}</div></td>
+      return `<tr class="author-top" data-email="${esc(a.email)}">
+        <td class="colors"><div class="age-bar" data-hue="${a.hue}">${ageDots}</div></td>
         <td class="name">${esc(a.author)}</td>
-        <td class="email">${esc(a.email)}</td>
-        <td class="lines">${a.repoLines.toLocaleString()} live<br><span class="total">${a.totalLines.toLocaleString()} all-time</span></td>
+        <td class="email" colspan="2">${esc(a.email)}</td>
+        <td rowspan="2" style="vertical-align:middle"><button class="reset" data-email="${esc(a.email)}">Reset</button></td>
+      </tr>
+      <tr class="author-bottom" data-email="${esc(a.email)}">
+        <td class="lines">${a.repoLines.toLocaleString()} live loc</td>
+        <td class="lines total">${a.totalLines.toLocaleString()} all-time loc</td>
         <td><input type="range" min="0" max="359" value="${a.hue}" class="hue-slider"
              data-email="${esc(a.email)}" data-default-hue="${a.defaultHue}"></td>
-        <td><button class="reset" data-email="${esc(a.email)}">Reset</button></td>
       </tr>`;
     })
     .join("\n");
@@ -40,14 +42,19 @@ export function buildAuthorsHtml(
   h2 { margin-top: 0; font-size: 1.1em; font-weight: 600;
        border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; margin-bottom: 16px; }
   table { border-collapse: collapse; width: 100%; }
-  td { padding: 5px 10px; vertical-align: middle; }
-  td:first-child { width: 80px; text-align: center; }
+  th { padding: 3px 10px 8px; text-align: left; font-size: 0.8em; font-weight: 600;
+       text-transform: uppercase; letter-spacing: 0.04em;
+       color: var(--vscode-descriptionForeground);
+       border-bottom: 1px solid var(--vscode-panel-border); }
+  th:first-child { text-align: center; }
+  td { padding: 3px 10px; vertical-align: middle; }
+  .colors { width: 90px; text-align: center; vertical-align: middle; }
   .age-bar { display: flex; gap: 2px; align-items: center; }
   .age-dot { width: 10px; height: 22px; border-radius: 3px; flex-shrink: 0; }
   .name { font-weight: 500; }
   .email { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
-  .lines { color: var(--vscode-descriptionForeground); font-size: 0.9em; text-align: right; }
-  .total { font-size: 0.8em; opacity: 0.7; }
+  .lines { color: var(--vscode-descriptionForeground); font-size: 0.9em; white-space: nowrap; }
+  .total { opacity: 0.7; }
   .hue-slider { -webkit-appearance: none; appearance: none; width: 140px; height: 14px;
                 border-radius: 7px; cursor: pointer; border: none; outline: none;
                 background: linear-gradient(to right,
@@ -57,7 +64,8 @@ export function buildAuthorsHtml(
     border-radius: 50%; background: white; border: 2px solid rgba(0,0,0,0.4); cursor: pointer; }
   .hue-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%;
     background: white; border: 2px solid rgba(0,0,0,0.4); cursor: pointer; box-sizing: border-box; }
-  tr:hover { background: var(--vscode-list-hoverBackground); }
+  tr.author-top:hover, tr.author-top:hover + tr.author-bottom,
+  tr.author-top:has(+ tr.author-bottom:hover), tr.author-bottom:hover { background: var(--vscode-list-hoverBackground); }
   tr.is-reset { opacity: 0.5; }
   .actions { margin-top: 20px; display: flex; gap: 10px; }
   button { padding: 7px 22px; font-size: 1em; cursor: pointer; border: none; border-radius: 4px; }
@@ -70,8 +78,10 @@ export function buildAuthorsHtml(
            padding: 3px 8px; border: 1px solid var(--vscode-panel-border); }
   .reset:hover { color: var(--vscode-foreground); border-color: var(--vscode-foreground); }
 </style></head><body>
-  <h2>Git Blame: Author Colors</h2>
-  <table><tbody>${rows}</tbody></table>
+  <h2>Git Blame Author Colors</h2>
+  <table>
+    <tbody>${rows}</tbody>
+  </table>
   <div class="actions">
     <button class="ok" id="ok">Apply</button>
     <button class="cancel" id="cancel">Cancel</button>
@@ -79,7 +89,7 @@ export function buildAuthorsHtml(
   <script>
     const SAT = ${sat};
     const LIGHT = ${light};
-    const SAT_LEVELS = [1.0, 0.84, 0.68, 0.52, 0.36, 0.20];
+    const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
     const vscode = acquireVsCodeApi();
     const resetSet = new Set();
     function updateAgeDots(row, hue) {
@@ -90,19 +100,23 @@ export function buildAuthorsHtml(
     }
     document.querySelectorAll('.hue-slider').forEach(el => {
       el.addEventListener('input', () => {
-        const row = el.closest('tr');
-        updateAgeDots(row, el.value);
-        row.classList.remove('is-reset');
+        const bottomRow = el.closest('tr');
+        const topRow = bottomRow.previousElementSibling;
+        updateAgeDots(topRow, el.value);
+        bottomRow.classList.remove('is-reset');
+        topRow.classList.remove('is-reset');
         resetSet.delete(el.dataset.email);
       });
     });
     document.querySelectorAll('.reset').forEach(btn => {
       btn.addEventListener('click', () => {
-        const row = btn.closest('tr');
-        const slider = row.querySelector('.hue-slider');
+        const topRow = btn.closest('tr');
+        const bottomRow = topRow.nextElementSibling;
+        const slider = bottomRow.querySelector('.hue-slider');
         slider.value = slider.dataset.defaultHue;
-        updateAgeDots(row, slider.dataset.defaultHue);
-        row.classList.add('is-reset');
+        updateAgeDots(topRow, slider.dataset.defaultHue);
+        bottomRow.classList.add('is-reset');
+        topRow.classList.add('is-reset');
         resetSet.add(btn.dataset.email);
       });
     });
