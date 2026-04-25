@@ -57,8 +57,8 @@
         "gitBlameColors.ageWindowDays": {
           "type": "number",
           "default": 7,
-          "minimum": 1,
-          "description": "Age window in days. Commits within this window are spread across saturation levels; anything older gets minimum saturation."
+          "minimum": 0,
+          "description": "Age window in days. Commits within this window are spread across saturation levels; anything older gets minimum saturation. If the repo is younger than the window, the oldest commit's age is used instead. Set to 0 to always scale to the age of the oldest commit."
         },
         "gitBlameColors.authorHues": {
           "type": "object",
