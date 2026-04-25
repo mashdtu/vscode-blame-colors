@@ -1,0 +1,62 @@
+{
+  "name": "git-blame-colors",
+  "displayName": "Git Blame Colors",
+  "description": "Visualize git blame with a colored block per line — color maps to the author, hover for commit details.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": ["Other"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/local/git-blame-colors"
+  },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gitBlameColors.toggle",
+        "title": "Git Blame Colors: Toggle"
+      },
+      {
+        "command": "gitBlameColors.refresh",
+        "title": "Git Blame Colors: Refresh"
+      }
+    ],
+    "configuration": {
+      "title": "Git Blame Colors",
+      "properties": {
+        "gitBlameColors.blockWidth": {
+          "type": "number",
+          "default": 6,
+          "description": "Width in pixels of the colored blame block."
+        },
+        "gitBlameColors.saturation": {
+          "type": "number",
+          "default": 70,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "HSL saturation (0–100) for author colors."
+        },
+        "gitBlameColors.lightness": {
+          "type": "number",
+          "default": 55,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "HSL lightness (0–100) for author colors."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.74.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.0.0"
+  }
+}
