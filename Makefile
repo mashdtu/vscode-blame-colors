@@ -2,7 +2,7 @@ DIST    := dist
 VSIX    := $(DIST)/$(shell node -p "const p=require('./package.json'); p.name+'-'+p.version+'.vsix'")
 VERSION := $(shell node -p "require('./package.json').version")
 
-.PHONY: all compile watch package install release clean
+.PHONY: all compile watch package install release bump-minor bump-major clean
 
 all: compile
 
@@ -21,6 +21,22 @@ install: package
 
 clean:
 	rm -rf out $(DIST)
+
+bump-minor:
+	@node -e "\
+	  const fs=require('fs'), p=JSON.parse(fs.readFileSync('package.json','utf8'));\
+	  const [a,b]=p.version.split('.').map(Number);\
+	  p.version=a+'.'+(b+1)+'.0';\
+	  fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');\
+	  console.log('Bumped to '+p.version);"
+
+bump-major:
+	@node -e "\
+	  const fs=require('fs'), p=JSON.parse(fs.readFileSync('package.json','utf8'));\
+	  const [a]=p.version.split('.').map(Number);\
+	  p.version=(a+1)+'.0.0';\
+	  fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');\
+	  console.log('Bumped to '+p.version);"
 
 release: compile
 	@node -e "\
