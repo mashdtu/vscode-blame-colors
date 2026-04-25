@@ -75,6 +75,67 @@ function parse(output: string): Map<number, BlameInfo> {
   return result;
 }
 
+async function getRepoLinesByAuthor(
+  repoRoot: string,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  try {
+    const { stdout } = await execFileAsync(
+      'git',
+      ['log', '--pretty=format:AUTHOR:%ae', '--numstat', '--no-merges'],
+      { cwd: repoRoot, maxBuffer: 50 * 1024 * 1024 },
+    );
+    let currentEmail = '';
+    for (const line of stdout.split('\n')) {
+      if (line.startsWith('AUTHOR:')) {
+        currentEmail = line.slice(7).trim();
+      } else {
+        const m = line.match(/^(\d+)\t\d+\t/);
+        if (m && currentEmail) {
+          result.set(currentEmail, (result.get(currentEmail) ?? 0) + parseInt(m[1], 10));
+        }
+      }
+    }
+  } catch { /* non-git dir or error */ }
+  return result;
+}
+
+async function getRepoCurrentLinesByAuthor(
+  repoRoot: string,
+): Promise<Map<string, number>> {
+  const result = new Map<string, number>();
+  try {
+    const { stdout: lsOut } = await execFileAsync(
+      "git",
+      ["ls-files", "-z"],
+      { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
+    );
+    const files = lsOut.split("\0").filter(Boolean);
+    const BATCH = 20;
+    for (let i = 0; i < files.length; i += BATCH) {
+      const batch = files.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map(async (file) => {
+          try {
+            const { stdout } = await execFileAsync(
+              "git",
+              ["blame", "--porcelain", "--", file],
+              { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
+            );
+            for (const line of stdout.split("\n")) {
+              if (line.startsWith("author-mail ")) {
+                const email = line.slice(12).trim().replace(/^<|>$/g, "");
+                result.set(email, (result.get(email) ?? 0) + 1);
+              }
+            }
+          } catch { /* binary file or error */ }
+        }),
+      );
+    }
+  } catch { /* non-git dir */ }
+  return result;
+}
+
 export function authorHue(email: string): number {
   let h = 0;
   for (let i = 0; i < email.length; i++)
@@ -286,6 +347,11 @@ export function activate(context: vscode.ExtensionContext): void {
       const authorHues = cfg.get<Record<string, number>>("authorHues", {});
 
       const authorMap = new Map<string, AuthorEntry>();
+      const repoRoot = path.dirname(editor!.document.uri.fsPath);
+      const [repoLines, repoCurrentLines] = await Promise.all([
+        getRepoLinesByAuthor(repoRoot),
+        getRepoCurrentLinesByAuthor(repoRoot),
+      ]);
       for (const [, info] of blameMap) {
         if (info.isUncommitted) continue;
         if (!authorMap.has(info.authorEmail)) {
@@ -293,6 +359,8 @@ export function activate(context: vscode.ExtensionContext): void {
             author: info.author,
             email: info.authorEmail,
             lines: 0,
+            repoLines: repoCurrentLines.get(info.authorEmail) ?? 0,
+            totalLines: repoLines.get(info.authorEmail) ?? 0,
             hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
             defaultHue: authorHue(info.authorEmail),
           });
