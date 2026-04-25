@@ -10,7 +10,7 @@
   "categories": ["Other"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/local/git-blame-colors"
+    "url": "https://github.com/mashdtu/vscode-blame-colors"
   },
   "activationEvents": ["onStartupFinished"],
   "main": "./out/extension.js",
