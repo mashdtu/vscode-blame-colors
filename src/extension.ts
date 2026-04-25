@@ -255,10 +255,10 @@ export function activate(context: vscode.ExtensionContext): void {
         if (t < oldestCommitMs) oldestCommitMs = t;
       }
     }
-    const repoAgeMs = Math.max(now - oldestCommitMs, 1);
+    const fileAgeMs = Math.max(now - oldestCommitMs, 1);
     const ageWindowMs = ageWindowDays === 0
-      ? repoAgeMs
-      : Math.min(Math.max(ageWindowDays, 1) * 24 * 60 * 60 * 1000, repoAgeMs);
+      ? fileAgeMs
+      : Math.min(Math.max(ageWindowDays, 1) * 24 * 60 * 60 * 1000, fileAgeMs);
     const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
 
     const groups = new Map<
