@@ -122,9 +122,24 @@ async function getRepoCurrentLinesByAuthor(
               ["blame", "--porcelain", "--", file],
               { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
             );
+            // In --porcelain output the metadata block (including author-mail)
+            // only appears on the FIRST occurrence of each commit hash. Subsequent
+            // lines for the same commit only have the hash header with no metadata.
+            // So we must track hash→email and count every hash-header line.
+            const emailByHash = new Map<string, string>();
+            let currentHash = "";
             for (const line of stdout.split("\n")) {
-              if (line.startsWith("author-mail ")) {
+              const hashMatch = line.match(/^([0-9a-f]{40}) /);
+              if (hashMatch) {
+                currentHash = hashMatch[1];
+                const email = emailByHash.get(currentHash);
+                if (email !== undefined) {
+                  result.set(email, (result.get(email) ?? 0) + 1);
+                }
+                // unknown hash: wait for author-mail below
+              } else if (line.startsWith("author-mail ") && currentHash && !emailByHash.has(currentHash)) {
                 const email = line.slice(12).trim().replace(/^<|>$/g, "");
+                emailByHash.set(currentHash, email);
                 result.set(email, (result.get(email) ?? 0) + 1);
               }
             }
@@ -230,18 +245,21 @@ export function activate(context: vscode.ExtensionContext): void {
     const cfg = vscode.workspace.getConfiguration("gitBlameColors");
     const sat = cfg.get<number>("saturation", 38);
     const light = cfg.get<number>("lightness", 56);
+    const ageWindowDays = cfg.get<number>("ageWindowDays", 0);
+    const now = Date.now();
 
-    let minTime = Infinity,
-      maxTime = -Infinity;
+    let oldestCommitMs = now;
     for (const [, info] of blameMap) {
-      if (info.isUncommitted) continue;
-      const t = info.authorTime.getTime();
-      if (t < minTime) minTime = t;
-      if (t > maxTime) maxTime = t;
+      if (!info.isUncommitted) {
+        const t = info.authorTime.getTime();
+        if (t < oldestCommitMs) oldestCommitMs = t;
+      }
     }
-    if (!isFinite(minTime)) minTime = maxTime = Date.now();
-    const timeRange = Math.max(maxTime - minTime, 1);
-    const SAT_LEVELS = [1.0, 0.84, 0.68, 0.52, 0.36, 0.20];
+    const repoAgeMs = Math.max(now - oldestCommitMs, 1);
+    const ageWindowMs = ageWindowDays === 0
+      ? repoAgeMs
+      : Math.min(Math.max(ageWindowDays, 1) * 24 * 60 * 60 * 1000, repoAgeMs);
+    const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
 
     const groups = new Map<
       string,
@@ -255,7 +273,8 @@ export function activate(context: vscode.ExtensionContext): void {
         key = "__uncommitted__";
         color = `hsl(0, 0%, ${light}%)`;
       } else {
-        const ageFactor = (maxTime - info.authorTime.getTime()) / timeRange;
+        const ageMs = now - info.authorTime.getTime();
+        const ageFactor = Math.min(1, Math.max(0, ageMs / ageWindowMs));
         const bucket = Math.min(
           SAT_LEVELS.length - 1,
           Math.floor(ageFactor * SAT_LEVELS.length),
@@ -330,6 +349,25 @@ export function activate(context: vscode.ExtensionContext): void {
       if (editor) {
         blameData.delete(editor.document.uri.toString());
         schedule(editor, 0);
+      }
+    }),
+    vscode.commands.registerCommand("gitBlameColors.setAgeWindow", async () => {
+      const cfg = vscode.workspace.getConfiguration("gitBlameColors");
+      const current = cfg.get<number>("ageWindowDays", 0);
+      const input = await vscode.window.showInputBox({
+        title: "Git Blame Colors: Set Age Window",
+        prompt: "Days for the age window (0 = always scale to oldest commit). Commits older than the window get minimum saturation.",
+        value: String(current),
+        validateInput: (v) => {
+          const n = Number(v);
+          return Number.isInteger(n) && n >= 0 ? null : "Enter a whole number >= 0 (0 = scale to repo age)";
+        },
+      });
+      if (input === undefined) return;
+      await cfg.update("ageWindowDays", parseInt(input, 10), vscode.ConfigurationTarget.Global);
+      for (const e of vscode.window.visibleTextEditors) {
+        blameData.delete(e.document.uri.toString());
+        schedule(e, 0);
       }
     }),
     vscode.commands.registerCommand("gitBlameColors.showAuthors", async () => {
