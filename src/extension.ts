@@ -105,47 +105,62 @@ async function getRepoCurrentLinesByAuthor(
 ): Promise<Map<string, number>> {
   const result = new Map<string, number>();
   try {
-    const { stdout: lsOut } = await execFileAsync(
+    // Diff from the empty tree to HEAD gives every tracked file.
+    // Binary files show as "-\t-\tfilename" — filter those out so we
+    // don't run git blame on JARs / class files and get inflated counts.
+    const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
+    const { stdout: diffOut } = await execFileAsync(
       "git",
-      ["ls-files", "-z"],
+      ["diff", "--numstat", EMPTY_TREE, "HEAD"],
       { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
     );
-    const files = lsOut.split("\0").filter(Boolean);
+    const textFiles = diffOut
+      .split("\n")
+      .filter((l) => l.length > 0 && !l.startsWith("-\t"))
+      .map((l) => l.split("\t")[2]?.trim())
+      .filter((f): f is string => Boolean(f));
+
     const BATCH = 20;
-    for (let i = 0; i < files.length; i += BATCH) {
-      const batch = files.slice(i, i + BATCH);
+    for (let i = 0; i < textFiles.length; i += BATCH) {
+      const batch = textFiles.slice(i, i + BATCH);
       await Promise.all(
         batch.map(async (file) => {
           try {
             const { stdout } = await execFileAsync(
               "git",
-              ["blame", "--porcelain", "--", file],
+              ["blame", "--line-porcelain", "--", file],
               { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
             );
-            // In --porcelain output the metadata block (including author-mail)
-            // only appears on the FIRST occurrence of each commit hash. Subsequent
-            // lines for the same commit only have the hash header with no metadata.
-            // So we must track hash→email and count every hash-header line.
-            const emailByHash = new Map<string, string>();
-            let currentHash = "";
             for (const line of stdout.split("\n")) {
-              const hashMatch = line.match(/^([0-9a-f]{40}) /);
-              if (hashMatch) {
-                currentHash = hashMatch[1];
-                const email = emailByHash.get(currentHash);
-                if (email !== undefined) {
-                  result.set(email, (result.get(email) ?? 0) + 1);
-                }
-                // unknown hash: wait for author-mail below
-              } else if (line.startsWith("author-mail ") && currentHash && !emailByHash.has(currentHash)) {
+              if (line.startsWith("author-mail ")) {
                 const email = line.slice(12).trim().replace(/^<|>$/g, "");
-                emailByHash.set(currentHash, email);
                 result.set(email, (result.get(email) ?? 0) + 1);
               }
             }
-          } catch { /* binary file or error */ }
+          } catch { /* error blaming file */ }
         }),
       );
+    }
+  } catch { /* non-git dir */ }
+  return result;
+}
+
+async function getRepoAuthorNames(
+  repoRoot: string,
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["log", "--format=%ae\t%an"],
+      { cwd: repoRoot, maxBuffer: 20 * 1024 * 1024 },
+    );
+    for (const line of stdout.split("\n")) {
+      const tab = line.indexOf("\t");
+      if (tab === -1) continue;
+      const email = line.slice(0, tab).trim();
+      const name = line.slice(tab + 1).trim();
+      if (email && name && !result.has(email)) result.set(email, name);
     }
   } catch { /* non-git dir */ }
   return result;
@@ -267,21 +282,15 @@ export function activate(context: vscode.ExtensionContext): void {
     >();
     for (const [line, info] of blameMap) {
       if (line >= doc.lineCount) continue;
-      let key: string;
-      let color: string;
-      if (info.isUncommitted) {
-        key = "__uncommitted__";
-        color = `hsl(0, 0%, ${light}%)`;
-      } else {
-        const ageMs = now - info.authorTime.getTime();
-        const ageFactor = Math.min(1, Math.max(0, ageMs / ageWindowMs));
-        const bucket = Math.min(
-          SAT_LEVELS.length - 1,
-          Math.floor(ageFactor * SAT_LEVELS.length),
-        );
-        key = `${info.authorEmail}:${bucket}`;
-        color = `hsl(${resolveHue(info.authorEmail)}, ${Math.max(10, sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
-      }
+      if (info.isUncommitted) continue;
+      const ageMs = now - info.authorTime.getTime();
+      const ageFactor = Math.min(1, Math.max(0, ageMs / ageWindowMs));
+      const bucket = Math.min(
+        SAT_LEVELS.length - 1,
+        Math.floor(ageFactor * SAT_LEVELS.length),
+      );
+      const key = `${info.authorEmail}:${bucket}`;
+      const color = `hsl(${resolveHue(info.authorEmail)}, ${Math.max(10, sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
       if (!groups.has(key)) groups.set(key, { color, decs: [] });
       groups.get(key)!.decs.push({
         range: new vscode.Range(line, 0, line, doc.lineAt(line).text.length),
@@ -385,11 +394,45 @@ export function activate(context: vscode.ExtensionContext): void {
       const authorHues = cfg.get<Record<string, number>>("authorHues", {});
 
       const authorMap = new Map<string, AuthorEntry>();
-      const repoRoot = path.dirname(editor!.document.uri.fsPath);
-      const [repoLines, repoCurrentLines] = await Promise.all([
+      const fileDir = path.dirname(editor!.document.uri.fsPath);
+      const { stdout: rootOut } = await execFileAsync(
+        "git", ["rev-parse", "--show-toplevel"], { cwd: fileDir }
+      ).catch(() => ({ stdout: fileDir }));
+      const repoRoot = rootOut.trim();
+      const [repoLines, repoCurrentLines, authorNames] = await Promise.all([
         getRepoLinesByAuthor(repoRoot),
         getRepoCurrentLinesByAuthor(repoRoot),
+        getRepoAuthorNames(repoRoot),
       ]);
+
+      // Build from all known repo contributors, not just those in the current file
+      for (const [email, totalLines] of repoLines) {
+        if (!authorMap.has(email)) {
+          authorMap.set(email, {
+            author: authorNames.get(email) ?? email,
+            email,
+            lines: 0,
+            repoLines: repoCurrentLines.get(email) ?? 0,
+            totalLines,
+            hue: authorHues[email] ?? authorHue(email),
+            defaultHue: authorHue(email),
+          });
+        }
+      }
+      for (const [email, live] of repoCurrentLines) {
+        if (!authorMap.has(email)) {
+          authorMap.set(email, {
+            author: authorNames.get(email) ?? email,
+            email,
+            lines: 0,
+            repoLines: live,
+            totalLines: repoLines.get(email) ?? 0,
+            hue: authorHues[email] ?? authorHue(email),
+            defaultHue: authorHue(email),
+          });
+        }
+      }
+      // Count lines attributed to each author in the current file
       for (const [, info] of blameMap) {
         if (info.isUncommitted) continue;
         if (!authorMap.has(info.authorEmail)) {
@@ -402,11 +445,14 @@ export function activate(context: vscode.ExtensionContext): void {
             hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
             defaultHue: authorHue(info.authorEmail),
           });
+        } else {
+          // Prefer name from blame over git log
+          authorMap.get(info.authorEmail)!.author = info.author;
         }
         authorMap.get(info.authorEmail)!.lines++;
       }
 
-      const authors = [...authorMap.values()].sort((a, b) => b.lines - a.lines);
+      const authors = [...authorMap.values()].sort((a, b) => b.repoLines - a.repoLines);
       const result = await showAuthorsPanel(authors, sat, light);
       if (!result) return;
 
