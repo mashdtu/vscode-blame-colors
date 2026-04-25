@@ -7,20 +7,22 @@ Visualize git blame directly in the editor gutter. Each line gets a colored bloc
 ## Features
 
 ### Gutter color blocks
-A thin colored block appears in the gutter beside every line. The hue is unique per author and consistent across files. Commits fade toward grey the older they are, relative to the age range of the current file.
+A thin colored block appears in the gutter beside every line. The hue is unique per author and consistent across files. Commits fade toward grey as they age across 8 evenly-spaced saturation buckets.
 
-Age is split into 6 evenly-spaced buckets:
-
-| Bucket | Age (relative to file) | Saturation (default) |
-|---|---|---|
-| 1 (newest) | youngest 1/6 | 50% |
-| 2 | 2nd 1/6 | 42% |
-| 3 | 3rd 1/6 | 34% |
-| 4 | 4th 1/6 | 26% |
-| 5 | 5th 1/6 | 18% |
-| 6 (oldest) | oldest 1/6 | 10% |
+| Bucket | Saturation multiplier |
+|---|---|
+| 1 (newest) | 100% |
+| 2 | 89% |
+| 3 | 77% |
+| 4 | 66% |
+| 5 | 54% |
+| 6 | 43% |
+| 7 | 31% |
+| 8 (oldest) | 20% |
 
 Saturation scales with the `gitBlameColors.saturation` setting. The minimum is always 10%.
+
+The age window controls how much history is spread across the 8 buckets. By default it scales to the age of the oldest commit in the repo (`ageWindowDays = 0`). Anything older than the window is clamped to the lowest bucket.
 
 ### Hover for commit details
 Hover over any line to see:
@@ -32,7 +34,17 @@ Hover over any line to see:
 If you have GitLens, git-graph, or githistory installed the extension defers hover to them to avoid duplication.
 
 ### Author color management
-Open the **Show Authors** panel to see every author in the current file ranked by number of lines. Each row has a hue slider; drag it to pick a different hue for that author. A color swatch updates live as you drag. Click **Reset** on a row to revert that author back to their auto-generated hue. Click **Apply** to save, **Cancel** to discard.
+Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every author in the current file. Each row shows:
+- 8 age-preview swatches showing how the author's color fades over time
+- Author name and email
+- Live LOC (lines currently attributed to this author across the whole repo) and all-time LOC (every line they ever committed, including deleted ones)
+- A hue slider to override the auto-generated hue
+- A Reset button to revert to the auto-generated hue
+
+Click **Apply** to save all hue changes, **Cancel** to discard.
+
+### Age window
+Use **Git Blame Colors: Set Age Window** to set how many days of history are spread across the 8 color buckets. Set to `0` (default) to always scale to the age of the oldest commit in the repo.
 
 ### Toggle on/off
 Quickly hide and show all blame decorations without reloading.
@@ -51,6 +63,7 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 | `Git Blame Colors: Toggle` | Show or hide all gutter blame blocks |
 | `Git Blame Colors: Refresh` | Re-run blame on the current file |
 | `Git Blame Colors: Show Authors` | Open the author color management panel |
+| `Git Blame Colors: Set Age Window` | Set the age window in days (0 = scale to repo age) |
 
 ---
 
@@ -58,11 +71,10 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 
 | Setting | Default | Description |
 |---|---|---|
-| `gitBlameColors.saturation` | `38` | HSL saturation (0–100) applied to author colors |
+| `gitBlameColors.saturation` | `50` | HSL saturation (0–100) applied to author colors |
 | `gitBlameColors.lightness` | `56` | HSL lightness (0–100) applied to author colors |
+| `gitBlameColors.ageWindowDays` | `0` | Days of history spread across the 8 age buckets. `0` scales to the oldest commit in the repo. If the repo is younger than the window, the window shrinks to fit. |
 | `gitBlameColors.authorHues` | `{}` | Custom hue overrides per author email, e.g. `{"alice@example.com": 210}` |
-
-Adjust saturation and lightness via **File > Preferences > Settings** and search for `gitBlameColors`. Hue overrides are written automatically by the Show Authors panel.
 
 ---
 
@@ -103,6 +115,7 @@ Other useful targets:
 | `make compile` | Compile TypeScript only |
 | `make watch` | Watch mode - recompile on save |
 | `make package` | Build the `.vsix` without installing |
+| `make release` | Bump patch version, package, tag, and publish a GitHub release |
 | `make clean` | Remove `out/` and the `.vsix` |
 
 #### Option B - manual steps (Linux / macOS / Windows)
@@ -115,11 +128,11 @@ npm run compile
 vsce package
 ```
 
-This produces `git-blame-colors-0.0.1.vsix`. Install it:
+Install the resulting `.vsix`:
 
 **From the terminal:**
 ```sh
-code --install-extension git-blame-colors-0.0.1.vsix
+code --install-extension git-blame-colors-*.vsix
 ```
 
 **From the VS Code UI:**
@@ -138,7 +151,7 @@ cd vscode-blame-colors
 npm install
 npm run compile
 vsce package
-code --install-extension git-blame-colors-0.0.1.vsix
+code --install-extension git-blame-colors-*.vsix
 ```
 
 ---
@@ -155,4 +168,8 @@ code --uninstall-extension mashdtu.git-blame-colors
 
 ## How it works
 
-On activation (and whenever you switch files or save), the extension runs `git blame --porcelain` on the current file in a child process. It parses the output to extract per-line author, email, commit hash, timestamp, and summary. Each line is assigned a `TextEditorDecorationType` with an SVG gutter icon whose color is `hsl(<hue>, <saturation * age_factor>%, <lightness>%)`. The age factor is computed relative to the oldest and newest commit in the current file, so desaturation is always proportional to the file's own history range.
+On activation (and whenever you switch files or save), the extension runs `git blame --porcelain` on the current file in a child process. It parses the output to extract per-line author, email, commit hash, timestamp, and summary. Each line is assigned a `TextEditorDecorationType` with an SVG gutter icon whose color is `hsl(<hue>, <saturation * age_multiplier>%, <lightness>%)`.
+
+Age is bucketed relative to an age window anchored at the current time. If `ageWindowDays` is `0` the window stretches back to the oldest commit in the repo, so the full saturation range is always used. If a specific number of days is set, anything older than that window is clamped to minimum saturation.
+
+The Show Authors panel runs `git blame` across every tracked file in the repo to compute live LOC per author, and `git log --numstat` to compute all-time LOC.
