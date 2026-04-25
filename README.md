@@ -37,8 +37,8 @@ If you have GitLens, git-graph, or githistory installed the extension defers hov
 Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every contributor in the repository. Each row shows:
 - 8 age-preview swatches showing how the author's color fades over time
 - Author name and email
-- **Live LOC** — lines currently attributed to this author across the whole repo (derived from `git blame`)
-- **All-time LOC** — every line they ever added, including deleted ones (derived from `git log --numstat`)
+- **Live LOC**: lines currently attributed to this author across the whole repo (derived from `git blame`)
+- **All-time LOC**: every line they ever added, including deleted ones (derived from `git log --numstat`)
 - A hue slider to override the auto-generated hue
 - A Reset button to revert to the auto-generated hue
 
