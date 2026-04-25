@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { execFile } from 'child_process';
 import * as path from 'path';
 import { promisify } from 'util';
+import { pickColor } from './colorPicker.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -65,6 +66,16 @@ function authorColor(email: string, sat: number, light: number): string {
   let h = 0;
   for (let i = 0; i < email.length; i++) h = (Math.imul(31, h) + email.charCodeAt(i)) | 0;
   return `hsl(${(Math.abs(h) % 360 + 60) % 360}, ${sat}%, ${light}%)`;
+}
+
+function resolveColor(email: string, sat: number, light: number): string {
+  const custom = vscode.workspace.getConfiguration('gitBlameColors').get<Record<string, string>>('authorColors', {});
+  return custom[email] ?? authorColor(email, sat, light);
+}
+
+function colorIcon(color: string): vscode.Uri {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" rx="3" fill="${color}"/></svg>`;
+  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
 }
 
 function blameHover(info: BlameInfo): vscode.MarkdownString {
@@ -135,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
     for (const [line, info] of blameMap) {
       if (line >= doc.lineCount) continue;
       const key = info.isUncommitted ? '__uncommitted__' : info.authorEmail;
-      const color = info.isUncommitted ? 'rgba(120,120,120,0.55)' : authorColor(info.authorEmail, sat, light);
+      const color = info.isUncommitted ? 'rgba(120,120,120,0.55)' : resolveColor(info.authorEmail, sat, light);
       if (!groups.has(key)) groups.set(key, { color, decs: [] });
       groups.get(key)!.decs.push({
         range: new vscode.Range(line, 0, line, doc.lineAt(line).text.length),
@@ -180,6 +191,63 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('gitBlameColors.refresh', () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) { blameData.delete(editor.document.uri.toString()); schedule(editor, 0); }
+    }),
+    vscode.commands.registerCommand('gitBlameColors.showAuthors', async () => {
+      const editor = vscode.window.activeTextEditor;
+      const blameMap = editor ? blameData.get(editor.document.uri.toString()) : undefined;
+      if (!blameMap?.size) {
+        vscode.window.showInformationMessage('No blame data for current file.');
+        return;
+      }
+      const cfg = vscode.workspace.getConfiguration('gitBlameColors');
+      const sat = cfg.get<number>('saturation', 38);
+      const light = cfg.get<number>('lightness', 56);
+      const customColors = cfg.get<Record<string, string>>('authorColors', {});
+
+      const authorMap = new Map<string, { author: string; email: string; lines: number; color: string }>();
+      for (const [, info] of blameMap) {
+        if (info.isUncommitted) continue;
+        if (!authorMap.has(info.authorEmail)) {
+          authorMap.set(info.authorEmail, {
+            author: info.author,
+            email: info.authorEmail,
+            lines: 0,
+            color: customColors[info.authorEmail] ?? authorColor(info.authorEmail, sat, light),
+          });
+        }
+        authorMap.get(info.authorEmail)!.lines++;
+      }
+
+      const items = [...authorMap.values()]
+        .sort((a, b) => b.lines - a.lines)
+        .map(a => ({
+          label: a.author,
+          description: a.email,
+          detail: `${a.lines} lines · ${a.color}`,
+          iconPath: colorIcon(a.color),
+          email: a.email,
+          currentColor: a.color,
+        }));
+
+      const picked = await vscode.window.showQuickPick(items, {
+        title: 'Git Blame Authors — pick one to set a custom color',
+        placeHolder: 'Select an author',
+      });
+      if (!picked) return;
+
+      const newColor = await pickColor(picked.label, picked.currentColor);
+      if (!newColor) return;
+
+      const updated = { ...customColors, [picked.email]: newColor.trim() };
+      await cfg.update('authorColors', updated, vscode.ConfigurationTarget.Global);
+
+      const old = decorationTypes.get(picked.email);
+      if (old) { old.dispose(); decorationTypes.delete(picked.email); }
+
+      for (const e of vscode.window.visibleTextEditors) {
+        blameData.delete(e.document.uri.toString());
+        schedule(e, 0);
+      }
     }),
     vscode.window.onDidChangeActiveTextEditor(e => { if (e) schedule(e); }),
     vscode.workspace.onDidSaveTextDocument(doc => {
