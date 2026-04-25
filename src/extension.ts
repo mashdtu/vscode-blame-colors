@@ -1,8 +1,8 @@
-import * as vscode from 'vscode';
-import { execFile } from 'child_process';
-import * as path from 'path';
-import { promisify } from 'util';
-import { pickColor } from './colorPicker.js';
+import * as vscode from "vscode";
+import { execFile } from "child_process";
+import * as path from "path";
+import { promisify } from "util";
+import { showAuthorsPanel, AuthorEntry, PanelResult } from "./colorPicker.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,14 +15,20 @@ interface BlameInfo {
   isUncommitted: boolean;
 }
 
-const UNCOMMITTED_HASH = '0'.repeat(40);
+const UNCOMMITTED_HASH = "0".repeat(40);
 
-async function getBlame(filePath: string): Promise<Map<number, BlameInfo> | null> {
+async function getBlame(
+  filePath: string,
+): Promise<Map<number, BlameInfo> | null> {
   try {
-    const { stdout } = await execFileAsync('git', ['blame', '--porcelain', '--', filePath], {
-      cwd: path.dirname(filePath),
-      maxBuffer: 20 * 1024 * 1024,
-    });
+    const { stdout } = await execFileAsync(
+      "git",
+      ["blame", "--porcelain", "--", filePath],
+      {
+        cwd: path.dirname(filePath),
+        maxBuffer: 20 * 1024 * 1024,
+      },
+    );
     return parse(stdout);
   } catch {
     return null;
@@ -32,50 +38,55 @@ async function getBlame(filePath: string): Promise<Map<number, BlameInfo> | null
 function parse(output: string): Map<number, BlameInfo> {
   const result = new Map<number, BlameInfo>();
   const cache = new Map<string, Partial<BlameInfo>>();
-  const lines = output.split('\n');
+  const lines = output.split("\n");
   let i = 0;
   while (i < lines.length) {
     const m = lines[i].match(/^([0-9a-f]{40}) \d+ (\d+)/);
-    if (!m) { i++; continue; }
+    if (!m) {
+      i++;
+      continue;
+    }
     const hash = m[1];
     const line = parseInt(m[2], 10) - 1;
     if (!cache.has(hash)) cache.set(hash, {});
     const e = cache.get(hash)!;
     i++;
-    while (i < lines.length && !lines[i].startsWith('\t')) {
+    while (i < lines.length && !lines[i].startsWith("\t")) {
       const l = lines[i++];
-      if (l.startsWith('author ') && e.author === undefined) e.author = l.slice(7).trim();
-      else if (l.startsWith('author-mail ') && e.authorEmail === undefined) e.authorEmail = l.slice(12).trim().replace(/^<|>$/g, '');
-      else if (l.startsWith('author-time ') && e.authorTime === undefined) e.authorTime = new Date(parseInt(l.slice(12), 10) * 1000);
-      else if (l.startsWith('summary ') && e.summary === undefined) e.summary = l.slice(8).trim();
+      if (l.startsWith("author ") && e.author === undefined)
+        e.author = l.slice(7).trim();
+      else if (l.startsWith("author-mail ") && e.authorEmail === undefined)
+        e.authorEmail = l.slice(12).trim().replace(/^<|>$/g, "");
+      else if (l.startsWith("author-time ") && e.authorTime === undefined)
+        e.authorTime = new Date(parseInt(l.slice(12), 10) * 1000);
+      else if (l.startsWith("summary ") && e.summary === undefined)
+        e.summary = l.slice(8).trim();
     }
     i++;
     result.set(line, {
       commitHash: hash,
-      author: e.author ?? 'Unknown',
-      authorEmail: e.authorEmail ?? '',
+      author: e.author ?? "Unknown",
+      authorEmail: e.authorEmail ?? "",
       authorTime: e.authorTime ?? new Date(0),
-      summary: e.summary ?? '',
+      summary: e.summary ?? "",
       isUncommitted: hash === UNCOMMITTED_HASH,
     });
   }
   return result;
 }
 
-function authorColor(email: string, sat: number, light: number): string {
+export function authorHue(email: string): number {
   let h = 0;
-  for (let i = 0; i < email.length; i++) h = (Math.imul(31, h) + email.charCodeAt(i)) | 0;
-  return `hsl(${(Math.abs(h) % 360 + 60) % 360}, ${sat}%, ${light}%)`;
+  for (let i = 0; i < email.length; i++)
+    h = (Math.imul(31, h) + email.charCodeAt(i)) | 0;
+  return ((Math.abs(h) % 360) + 60) % 360;
 }
 
-function resolveColor(email: string, sat: number, light: number): string {
-  const custom = vscode.workspace.getConfiguration('gitBlameColors').get<Record<string, string>>('authorColors', {});
-  return custom[email] ?? authorColor(email, sat, light);
-}
-
-function colorIcon(color: string): vscode.Uri {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" rx="3" fill="${color}"/></svg>`;
-  return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+function resolveHue(email: string): number {
+  const hues = vscode.workspace
+    .getConfiguration("gitBlameColors")
+    .get<Record<string, number>>("authorHues", {});
+  return hues[email] ?? authorHue(email);
 }
 
 function blameHover(info: BlameInfo): vscode.MarkdownString {
@@ -85,11 +96,13 @@ function blameHover(info: BlameInfo): vscode.MarkdownString {
   if (info.isUncommitted) {
     md.appendMarkdown(`$(git-commit) **Not yet committed**`);
   } else {
-    const esc = (s: string) => s.replace(/[\\`*_{}[\]()#+\-.!|]/g, '\\$&');
+    const esc = (s: string) => s.replace(/[\\`*_{}[\]()#+\-.!|]/g, "\\$&");
     md.appendMarkdown(`$(git-commit) \`${info.commitHash.slice(0, 8)}\`\n\n`);
     md.appendMarkdown(`$(person) **${esc(info.author)}**`);
     if (info.authorEmail) md.appendMarkdown(` \\<${esc(info.authorEmail)}\\>`);
-    md.appendMarkdown(`\n\n$(calendar) ${info.authorTime.toLocaleString()} *(${timeAgo(info.authorTime)})*\n\n---\n\n*${esc(info.summary)}*`);
+    md.appendMarkdown(
+      `\n\n$(calendar) ${info.authorTime.toLocaleString()} *(${timeAgo(info.authorTime)})*\n\n---\n\n*${esc(info.summary)}*`,
+    );
   }
   return md;
 }
@@ -105,48 +118,90 @@ function timeAgo(date: Date): string {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const decorationTypes = new Map<string, vscode.TextEditorDecorationType>();
+  const decorationTypes = new Map<
+    string,
+    Map<string, vscode.TextEditorDecorationType>
+  >();
   const blameData = new Map<string, Map<number, BlameInfo>>();
   const pending = new Map<string, ReturnType<typeof setTimeout>>();
   let enabled = true;
 
   function makeDecorationType(color: string): vscode.TextEditorDecorationType {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16"><rect width="4" height="16" fill="${color}"/></svg>`;
-    const dt = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`),
-      gutterIconSize: 'contain',
-      border: '0px solid transparent',
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="6" height="16"><rect width="3" height="16" fill="${color}"/></svg>`;
+    return vscode.window.createTextEditorDecorationType({
+      gutterIconPath: vscode.Uri.parse(
+        `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`,
+      ),
+      gutterIconSize: "contain",
+      border: "0px solid transparent",
       rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
     });
-    context.subscriptions.push(dt);
-    return dt;
   }
 
   function clearDecorations(editor: vscode.TextEditor) {
-    for (const dt of decorationTypes.values()) editor.setDecorations(dt, []);
+    const docKey = editor.document.uri.toString();
+    const dtMap = decorationTypes.get(docKey);
+    if (dtMap) {
+      for (const dt of dtMap.values()) {
+        editor.setDecorations(dt, []);
+        dt.dispose();
+      }
+      decorationTypes.delete(docKey);
+    }
   }
 
   async function applyBlame(editor: vscode.TextEditor) {
     if (!enabled) return;
     const doc = editor.document;
-    if (doc.uri.scheme !== 'file') return;
+    if (doc.uri.scheme !== "file") return;
 
     const blameMap = await getBlame(doc.uri.fsPath);
-    if (!vscode.window.visibleTextEditors.some(e => e.document === doc)) return;
+    if (!vscode.window.visibleTextEditors.some((e) => e.document === doc))
+      return;
 
     clearDecorations(editor);
-    if (!blameMap?.size) { blameData.delete(doc.uri.toString()); return; }
+    if (!blameMap?.size) {
+      blameData.delete(doc.uri.toString());
+      return;
+    }
     blameData.set(doc.uri.toString(), blameMap);
 
-    const cfg = vscode.workspace.getConfiguration('gitBlameColors');
-    const sat = cfg.get<number>('saturation', 38);
-    const light = cfg.get<number>('lightness', 56);
+    const cfg = vscode.workspace.getConfiguration("gitBlameColors");
+    const sat = cfg.get<number>("saturation", 38);
+    const light = cfg.get<number>("lightness", 56);
 
-    const groups = new Map<string, { color: string; decs: vscode.DecorationOptions[] }>();
+    let minTime = Infinity,
+      maxTime = -Infinity;
+    for (const [, info] of blameMap) {
+      if (info.isUncommitted) continue;
+      const t = info.authorTime.getTime();
+      if (t < minTime) minTime = t;
+      if (t > maxTime) maxTime = t;
+    }
+    if (!isFinite(minTime)) minTime = maxTime = Date.now();
+    const timeRange = Math.max(maxTime - minTime, 1);
+    const SAT_LEVELS = [1.0, 0.75, 0.55, 0.38, 0.25, 0.14];
+
+    const groups = new Map<
+      string,
+      { color: string; decs: vscode.DecorationOptions[] }
+    >();
     for (const [line, info] of blameMap) {
       if (line >= doc.lineCount) continue;
-      const key = info.isUncommitted ? '__uncommitted__' : info.authorEmail;
-      const color = info.isUncommitted ? 'rgba(120,120,120,0.55)' : resolveColor(info.authorEmail, sat, light);
+      let key: string;
+      let color: string;
+      if (info.isUncommitted) {
+        key = "__uncommitted__";
+        color = `hsl(0, 0%, ${light}%)`;
+      } else {
+        const ageFactor = (maxTime - info.authorTime.getTime()) / timeRange;
+        const bucket = Math.min(
+          SAT_LEVELS.length - 1,
+          Math.floor(ageFactor * SAT_LEVELS.length),
+        );
+        key = `${info.authorEmail}:${bucket}`;
+        color = `hsl(${resolveHue(info.authorEmail)}, ${(sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
+      }
       if (!groups.has(key)) groups.set(key, { color, decs: [] });
       groups.get(key)!.decs.push({
         range: new vscode.Range(line, 0, line, doc.lineAt(line).text.length),
@@ -154,57 +209,83 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }
 
+    const docKey = doc.uri.toString();
+    const dtMap = new Map<string, vscode.TextEditorDecorationType>();
+    decorationTypes.set(docKey, dtMap);
     for (const [key, { color, decs }] of groups) {
-      if (!decorationTypes.has(key)) decorationTypes.set(key, makeDecorationType(color));
-      editor.setDecorations(decorationTypes.get(key)!, decs);
+      const dt = makeDecorationType(color);
+      dtMap.set(key, dt);
+      editor.setDecorations(dt, decs);
     }
   }
 
   function schedule(editor: vscode.TextEditor, ms = 150) {
     const key = editor.document.uri.toString();
     clearTimeout(pending.get(key));
-    pending.set(key, setTimeout(() => { pending.delete(key); applyBlame(editor); }, ms));
+    pending.set(
+      key,
+      setTimeout(() => {
+        pending.delete(key);
+        applyBlame(editor);
+      }, ms),
+    );
   }
 
-  const blameExtensions = ['eamodio.gitlens', 'mhutchie.git-graph', 'donjayamanne.githistory'];
-  const hasBlameExtension = blameExtensions.some(id => vscode.extensions.getExtension(id));
+  const blameExtensions = [
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    "donjayamanne.githistory",
+  ];
+  const hasBlameExtension = blameExtensions.some((id) =>
+    vscode.extensions.getExtension(id),
+  );
 
   if (!hasBlameExtension) {
     context.subscriptions.push(
-      vscode.languages.registerHoverProvider({ scheme: 'file' }, {
-        provideHover(doc, pos) {
-          if (!enabled) return null;
-          const info = blameData.get(doc.uri.toString())?.get(pos.line);
-          return info ? new vscode.Hover(blameHover(info)) : null;
+      vscode.languages.registerHoverProvider(
+        { scheme: "file" },
+        {
+          provideHover(doc, pos) {
+            if (!enabled) return null;
+            const info = blameData.get(doc.uri.toString())?.get(pos.line);
+            return info ? new vscode.Hover(blameHover(info)) : null;
+          },
         },
-      }),
+      ),
     );
   }
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('gitBlameColors.toggle', () => {
+    vscode.commands.registerCommand("gitBlameColors.toggle", () => {
       enabled = !enabled;
       const editor = vscode.window.activeTextEditor;
       if (editor) enabled ? schedule(editor, 0) : clearDecorations(editor);
-      vscode.window.showInformationMessage(`Git Blame Colors: ${enabled ? 'Enabled' : 'Disabled'}`);
+      vscode.window.showInformationMessage(
+        `Git Blame Colors: ${enabled ? "Enabled" : "Disabled"}`,
+      );
     }),
-    vscode.commands.registerCommand('gitBlameColors.refresh', () => {
+    vscode.commands.registerCommand("gitBlameColors.refresh", () => {
       const editor = vscode.window.activeTextEditor;
-      if (editor) { blameData.delete(editor.document.uri.toString()); schedule(editor, 0); }
+      if (editor) {
+        blameData.delete(editor.document.uri.toString());
+        schedule(editor, 0);
+      }
     }),
-    vscode.commands.registerCommand('gitBlameColors.showAuthors', async () => {
+    vscode.commands.registerCommand("gitBlameColors.showAuthors", async () => {
       const editor = vscode.window.activeTextEditor;
-      const blameMap = editor ? blameData.get(editor.document.uri.toString()) : undefined;
+      const blameMap = editor
+        ? blameData.get(editor.document.uri.toString())
+        : undefined;
       if (!blameMap?.size) {
-        vscode.window.showInformationMessage('No blame data for current file.');
+        vscode.window.showInformationMessage("No blame data for current file.");
         return;
       }
-      const cfg = vscode.workspace.getConfiguration('gitBlameColors');
-      const sat = cfg.get<number>('saturation', 38);
-      const light = cfg.get<number>('lightness', 56);
-      const customColors = cfg.get<Record<string, string>>('authorColors', {});
+      const cfg = vscode.workspace.getConfiguration("gitBlameColors");
+      const sat = cfg.get<number>("saturation", 38);
+      const light = cfg.get<number>("lightness", 56);
+      const authorHues = cfg.get<Record<string, number>>("authorHues", {});
 
-      const authorMap = new Map<string, { author: string; email: string; lines: number; color: string }>();
+      const authorMap = new Map<string, AuthorEntry>();
       for (const [, info] of blameMap) {
         if (info.isUncommitted) continue;
         if (!authorMap.has(info.authorEmail)) {
@@ -212,53 +293,58 @@ export function activate(context: vscode.ExtensionContext): void {
             author: info.author,
             email: info.authorEmail,
             lines: 0,
-            color: customColors[info.authorEmail] ?? authorColor(info.authorEmail, sat, light),
+            hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
+            defaultHue: authorHue(info.authorEmail),
           });
         }
         authorMap.get(info.authorEmail)!.lines++;
       }
 
-      const items = [...authorMap.values()]
-        .sort((a, b) => b.lines - a.lines)
-        .map(a => ({
-          label: a.author,
-          description: a.email,
-          detail: `${a.lines} lines · ${a.color}`,
-          iconPath: colorIcon(a.color),
-          email: a.email,
-          currentColor: a.color,
-        }));
+      const authors = [...authorMap.values()].sort((a, b) => b.lines - a.lines);
+      const result = await showAuthorsPanel(authors, sat, light);
+      if (!result) return;
 
-      const picked = await vscode.window.showQuickPick(items, {
-        title: 'Git Blame Authors — pick one to set a custom color',
-        placeHolder: 'Select an author',
-      });
-      if (!picked) return;
+      const updatedHues = { ...authorHues, ...result.hues };
+      for (const email of result.reset) delete updatedHues[email];
+      await cfg.update(
+        "authorHues",
+        updatedHues,
+        vscode.ConfigurationTarget.Global,
+      );
 
-      const newColor = await pickColor(picked.label, picked.currentColor);
-      if (!newColor) return;
-
-      const updated = { ...customColors, [picked.email]: newColor.trim() };
-      await cfg.update('authorColors', updated, vscode.ConfigurationTarget.Global);
-
-      const old = decorationTypes.get(picked.email);
-      if (old) { old.dispose(); decorationTypes.delete(picked.email); }
-
+      for (const dtMap of decorationTypes.values()) {
+        for (const dt of dtMap.values()) dt.dispose();
+      }
+      decorationTypes.clear();
       for (const e of vscode.window.visibleTextEditors) {
         blameData.delete(e.document.uri.toString());
         schedule(e, 0);
       }
     }),
-    vscode.window.onDidChangeActiveTextEditor(e => { if (e) schedule(e); }),
-    vscode.workspace.onDidSaveTextDocument(doc => {
-      const editor = vscode.window.visibleTextEditors.find(e => e.document === doc);
-      if (editor) { blameData.delete(doc.uri.toString()); schedule(editor, 0); }
+    vscode.window.onDidChangeActiveTextEditor((e) => {
+      if (e) schedule(e);
     }),
-    vscode.workspace.onDidCloseTextDocument(doc => blameData.delete(doc.uri.toString())),
+    vscode.workspace.onDidSaveTextDocument((doc) => {
+      const editor = vscode.window.visibleTextEditors.find(
+        (e) => e.document === doc,
+      );
+      if (editor) {
+        blameData.delete(doc.uri.toString());
+        schedule(editor, 0);
+      }
+    }),
+    vscode.workspace.onDidCloseTextDocument((doc) => {
+      const key = doc.uri.toString();
+      blameData.delete(key);
+      const dtMap = decorationTypes.get(key);
+      if (dtMap) {
+        for (const dt of dtMap.values()) dt.dispose();
+        decorationTypes.delete(key);
+      }
+    }),
   );
 
   for (const editor of vscode.window.visibleTextEditors) schedule(editor, 0);
 }
 
 export function deactivate() {}
-

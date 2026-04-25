@@ -33,6 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.authorHue = authorHue;
 exports.activate = activate;
 exports.deactivate = deactivate;
 const vscode = __importStar(require("vscode"));
@@ -94,19 +95,15 @@ function parse(output) {
     }
     return result;
 }
-function authorColor(email, sat, light) {
+function authorHue(email) {
     let h = 0;
     for (let i = 0; i < email.length; i++)
         h = (Math.imul(31, h) + email.charCodeAt(i)) | 0;
-    return `hsl(${(Math.abs(h) % 360 + 60) % 360}, ${sat}%, ${light}%)`;
+    return (Math.abs(h) % 360 + 60) % 360;
 }
-function resolveColor(email, sat, light) {
-    const custom = vscode.workspace.getConfiguration('gitBlameColors').get('authorColors', {});
-    return custom[email] ?? authorColor(email, sat, light);
-}
-function colorIcon(color) {
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" rx="3" fill="${color}"/></svg>`;
-    return vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`);
+function resolveHue(email) {
+    const hues = vscode.workspace.getConfiguration('gitBlameColors').get('authorHues', {});
+    return hues[email] ?? authorHue(email);
 }
 function blameHover(info) {
     const md = new vscode.MarkdownString(undefined, true);
@@ -145,19 +142,24 @@ function activate(context) {
     const pending = new Map();
     let enabled = true;
     function makeDecorationType(color) {
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="8" height="16"><rect width="4" height="16" fill="${color}"/></svg>`;
-        const dt = vscode.window.createTextEditorDecorationType({
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="6" height="16"><rect width="3" height="16" fill="${color}"/></svg>`;
+        return vscode.window.createTextEditorDecorationType({
             gutterIconPath: vscode.Uri.parse(`data:image/svg+xml;utf8,${encodeURIComponent(svg)}`),
             gutterIconSize: 'contain',
             border: '0px solid transparent',
             rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
         });
-        context.subscriptions.push(dt);
-        return dt;
     }
     function clearDecorations(editor) {
-        for (const dt of decorationTypes.values())
-            editor.setDecorations(dt, []);
+        const docKey = editor.document.uri.toString();
+        const dtMap = decorationTypes.get(docKey);
+        if (dtMap) {
+            for (const dt of dtMap.values()) {
+                editor.setDecorations(dt, []);
+                dt.dispose();
+            }
+            decorationTypes.delete(docKey);
+        }
     }
     async function applyBlame(editor) {
         if (!enabled)
@@ -177,12 +179,36 @@ function activate(context) {
         const cfg = vscode.workspace.getConfiguration('gitBlameColors');
         const sat = cfg.get('saturation', 38);
         const light = cfg.get('lightness', 56);
+        let minTime = Infinity, maxTime = -Infinity;
+        for (const [, info] of blameMap) {
+            if (info.isUncommitted)
+                continue;
+            const t = info.authorTime.getTime();
+            if (t < minTime)
+                minTime = t;
+            if (t > maxTime)
+                maxTime = t;
+        }
+        if (!isFinite(minTime))
+            minTime = maxTime = Date.now();
+        const timeRange = Math.max(maxTime - minTime, 1);
+        const SAT_LEVELS = [1.0, 0.75, 0.55, 0.38, 0.25, 0.14];
         const groups = new Map();
         for (const [line, info] of blameMap) {
             if (line >= doc.lineCount)
                 continue;
-            const key = info.isUncommitted ? '__uncommitted__' : info.authorEmail;
-            const color = info.isUncommitted ? 'rgba(120,120,120,0.55)' : resolveColor(info.authorEmail, sat, light);
+            let key;
+            let color;
+            if (info.isUncommitted) {
+                key = '__uncommitted__';
+                color = `hsl(0, 0%, ${light}%)`;
+            }
+            else {
+                const ageFactor = (maxTime - info.authorTime.getTime()) / timeRange;
+                const bucket = Math.min(SAT_LEVELS.length - 1, Math.floor(ageFactor * SAT_LEVELS.length));
+                key = `${info.authorEmail}:${bucket}`;
+                color = `hsl(${resolveHue(info.authorEmail)}, ${(sat * SAT_LEVELS[bucket]).toFixed(1)}%, ${light}%)`;
+            }
             if (!groups.has(key))
                 groups.set(key, { color, decs: [] });
             groups.get(key).decs.push({
@@ -190,10 +216,13 @@ function activate(context) {
                 hoverMessage: blameHover(info),
             });
         }
+        const docKey = doc.uri.toString();
+        const dtMap = new Map();
+        decorationTypes.set(docKey, dtMap);
         for (const [key, { color, decs }] of groups) {
-            if (!decorationTypes.has(key))
-                decorationTypes.set(key, makeDecorationType(color));
-            editor.setDecorations(decorationTypes.get(key), decs);
+            const dt = makeDecorationType(color);
+            dtMap.set(key, dt);
+            editor.setDecorations(dt, decs);
         }
     }
     function schedule(editor, ms = 150) {
@@ -235,7 +264,7 @@ function activate(context) {
         const cfg = vscode.workspace.getConfiguration('gitBlameColors');
         const sat = cfg.get('saturation', 38);
         const light = cfg.get('lightness', 56);
-        const customColors = cfg.get('authorColors', {});
+        const authorHues = cfg.get('authorHues', {});
         const authorMap = new Map();
         for (const [, info] of blameMap) {
             if (info.isUncommitted)
@@ -245,37 +274,25 @@ function activate(context) {
                     author: info.author,
                     email: info.authorEmail,
                     lines: 0,
-                    color: customColors[info.authorEmail] ?? authorColor(info.authorEmail, sat, light),
+                    hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
+                    defaultHue: authorHue(info.authorEmail),
                 });
             }
             authorMap.get(info.authorEmail).lines++;
         }
-        const items = [...authorMap.values()]
-            .sort((a, b) => b.lines - a.lines)
-            .map(a => ({
-            label: a.author,
-            description: a.email,
-            detail: `${a.lines} lines · ${a.color}`,
-            iconPath: colorIcon(a.color),
-            email: a.email,
-            currentColor: a.color,
-        }));
-        const picked = await vscode.window.showQuickPick(items, {
-            title: 'Git Blame Authors — pick one to set a custom color',
-            placeHolder: 'Select an author',
-        });
-        if (!picked)
+        const authors = [...authorMap.values()].sort((a, b) => b.lines - a.lines);
+        const result = await (0, colorPicker_js_1.showAuthorsPanel)(authors, sat, light);
+        if (!result)
             return;
-        const newColor = await (0, colorPicker_js_1.pickColor)(picked.label, picked.currentColor);
-        if (!newColor)
-            return;
-        const updated = { ...customColors, [picked.email]: newColor.trim() };
-        await cfg.update('authorColors', updated, vscode.ConfigurationTarget.Global);
-        const old = decorationTypes.get(picked.email);
-        if (old) {
-            old.dispose();
-            decorationTypes.delete(picked.email);
+        const updatedHues = { ...authorHues, ...result.hues };
+        for (const email of result.reset)
+            delete updatedHues[email];
+        await cfg.update('authorHues', updatedHues, vscode.ConfigurationTarget.Global);
+        for (const dtMap of decorationTypes.values()) {
+            for (const dt of dtMap.values())
+                dt.dispose();
         }
+        decorationTypes.clear();
         for (const e of vscode.window.visibleTextEditors) {
             blameData.delete(e.document.uri.toString());
             schedule(e, 0);
@@ -287,7 +304,16 @@ function activate(context) {
             blameData.delete(doc.uri.toString());
             schedule(editor, 0);
         }
-    }), vscode.workspace.onDidCloseTextDocument(doc => blameData.delete(doc.uri.toString())));
+    }), vscode.workspace.onDidCloseTextDocument(doc => {
+        const key = doc.uri.toString();
+        blameData.delete(key);
+        const dtMap = decorationTypes.get(key);
+        if (dtMap) {
+            for (const dt of dtMap.values())
+                dt.dispose();
+            decorationTypes.delete(key);
+        }
+    }));
     for (const editor of vscode.window.visibleTextEditors)
         schedule(editor, 0);
 }

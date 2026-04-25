@@ -49,10 +49,11 @@
           "minimum": 0,
           "maximum": 100,
           "description": "HSL lightness (0–100) for author colors."        },
-        "gitBlameColors.authorColors": {
+        "gitBlameColors.authorHues": {
           "type": "object",
           "default": {},
-          "description": "Custom colors per author email. E.g. {\"user@example.com\": \"#ff6600\"}"        }
+          "description": "Custom hue (0-359) per author email. E.g. {\"user@example.com\": 240}"
+        }
       }
     }
   },
