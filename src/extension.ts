@@ -209,8 +209,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }
 
   context.subscriptions.push(
-    // ── Show Authors (Repo) ─────────────────────────────────────────────────
-    vscode.commands.registerCommand("gitBlameColors.showAuthorsRepo", async () => {
+    vscode.commands.registerCommand("gitBlameColors.showAuthors", async () => {
       const editor = vscode.window.activeTextEditor;
       const blameMap = editor
         ? blameData.get(editor.document.uri.toString())
@@ -291,62 +290,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const authors = [...authorMap.values()]
         .filter((a) => a.totalLines > 0)
         .sort((a, b) => b.repoLines - a.repoLines);
-      const result = await showAuthorsPanel(authors, sat, light, "Authors — Repo");
-      if (!result) return;
-      await applyHueResult(result, cfg);
-    }),
-
-    // ── Show Authors (File) ───────────────────────────────────────────────────
-    vscode.commands.registerCommand("gitBlameColors.showAuthorsFile", async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showInformationMessage("Open a file to see its authors.");
-        return;
-      }
-      const blameMap = blameData.get(editor.document.uri.toString());
-      if (!blameMap?.size) {
-        vscode.window.showInformationMessage("No blame data for current file.");
-        return;
-      }
-
-      const cfg = vscode.workspace.getConfiguration("gitBlameColors");
-      const sat = cfg.get<number>("saturation", 38);
-      const light = cfg.get<number>("lightness", 56);
-      const authorHues = cfg.get<Record<string, number>>("authorHues", {});
-
-      const fileDir = path.dirname(editor.document.uri.fsPath);
-      const { stdout: rootOut } = await execFileAsync(
-        "git", ["rev-parse", "--show-toplevel"], { cwd: fileDir }
-      ).catch(() => ({ stdout: fileDir }));
-      const repoRoot = rootOut.trim();
-
-      const [repoLines, repoCurrentLines] = await Promise.all([
-        getRepoLinesByAuthor(repoRoot),
-        getRepoCurrentLinesByAuthor(repoRoot),
-      ]);
-
-      const authorMap = new Map<string, AuthorEntry>();
-      for (const [, info] of blameMap) {
-        if (info.isUncommitted) continue;
-        if (!authorMap.has(info.authorEmail)) {
-          authorMap.set(info.authorEmail, {
-            author: info.author,
-            email: info.authorEmail,
-            lines: 0,
-            repoLines: repoCurrentLines.get(info.authorEmail) ?? 0,
-            totalLines: repoLines.get(info.authorEmail) ?? 0,
-            hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
-            defaultHue: authorHue(info.authorEmail),
-          });
-        }
-        authorMap.get(info.authorEmail)!.lines++;
-      }
-
-      const filename = path.basename(editor.document.uri.fsPath);
-      const authors = [...authorMap.values()]
-        .filter((a) => a.totalLines > 0)
-        .sort((a, b) => b.lines - a.lines);
-      const result = await showAuthorsPanel(authors, sat, light, `Authors — ${filename}`);
+      const result = await showAuthorsPanel(authors, sat, light);
       if (!result) return;
       await applyHueResult(result, cfg);
     }),

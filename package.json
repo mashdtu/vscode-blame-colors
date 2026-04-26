@@ -29,12 +29,8 @@
         "title": "Git Blame Colors: Refresh"
       },
       {
-        "command": "gitBlameColors.showAuthorsRepo",
-        "title": "Git Blame Colors: Show Authors (Repo)"
-      },
-      {
-        "command": "gitBlameColors.showAuthorsFile",
-        "title": "Git Blame Colors: Show Authors (File)"
+        "command": "gitBlameColors.showAuthors",
+        "title": "Git Blame Colors: Show Authors"
       },
       {
         "command": "gitBlameColors.setAgeWindow",
