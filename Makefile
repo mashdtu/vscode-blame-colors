@@ -39,18 +39,19 @@ bump-major:
 	  console.log('Bumped to '+p.version);"
 
 release: compile
-	@node -e "\
-	  const fs=require('fs'), p=JSON.parse(fs.readFileSync('package.json','utf8'));\
-	  const [a,b,c]=p.version.split('.').map(Number);\
-	  p.version=a+'.'+b+'.'+(c+1);\
-	  fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');\
-	  console.log('Bumped to '+p.version);"
-	@mkdir -p $(DIST)
-	@VERSION=$$(node -p "require('./package.json').version"); \
+	@CURRENT=$$(node -p "require('./package.json').version"); \
+	 printf "Current version: $$CURRENT\nNew version: "; read NEW_VERSION; \
+	 if [ -z "$$NEW_VERSION" ]; then echo "Aborted: no version given."; exit 1; fi; \
+	 node -e "\
+	   const fs=require('fs'), p=JSON.parse(fs.readFileSync('package.json','utf8'));\
+	   p.version='$$NEW_VERSION';\
+	   fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');\
+	   console.log('Set version to '+p.version);"; \
+	 mkdir -p $(DIST); \
 	 VSIX="$(DIST)/$$(node -p "const p=require('./package.json'); p.name+'-'+p.version+'.vsix'")"; \
 	 vsce package --out $(DIST)/ && \
-	 if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$$VERSION"; fi && \
-	 (git tag "v$$VERSION" 2>/dev/null || echo "Tag v$$VERSION already exists, skipping.") && \
-	 (git push origin "v$$VERSION" 2>/dev/null || echo "Tag already on remote, skipping push.") && \
-	 gh release create "v$$VERSION" "$$VSIX" --title "Release v$$VERSION" \
-	   $$([ -f RELEASE_NOTES.md ] && echo "--notes-file RELEASE_NOTES.md" || echo "--notes \"Release v$$VERSION\"")
+	 if [ -n "$$(git status --porcelain)" ]; then git add -A && git commit -m "chore: release v$$NEW_VERSION"; fi && \
+	 (git tag "v$$NEW_VERSION" 2>/dev/null || echo "Tag v$$NEW_VERSION already exists, skipping.") && \
+	 (git push origin "v$$NEW_VERSION" 2>/dev/null || echo "Tag already on remote, skipping push.") && \
+	 gh release create "v$$NEW_VERSION" "$$VSIX" --title "Release v$$NEW_VERSION" \
+	   $$([ -f RELEASE_NOTES.md ] && echo "--notes-file RELEASE_NOTES.md" || echo "--notes \"Release v$$NEW_VERSION\"")
