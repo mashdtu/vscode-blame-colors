@@ -22,12 +22,26 @@ export function buildAuthorsHtml(
     live: { lang: Record<string, number>; file: Record<string, number> };
     alltime: { lang: Record<string, number>; file: Record<string, number> };
   }> = {};
+
+  // Aggregate totals across all authors
+  const totalLiveByLang: Record<string, number> = {};
+  const totalLiveByFile: Record<string, number> = {};
+  const totalAllTimeByLang: Record<string, number> = {};
+  const totalAllTimeByFile: Record<string, number> = {};
   for (const a of authors) {
     breakdown[a.email] = {
       live: { lang: a.liveByLang, file: a.liveByFile },
       alltime: { lang: a.allTimeByLang, file: a.allTimeByFile },
     };
+    for (const [k, v] of Object.entries(a.liveByLang))    totalLiveByLang[k]    = (totalLiveByLang[k]    ?? 0) + v;
+    for (const [k, v] of Object.entries(a.liveByFile))    totalLiveByFile[k]    = (totalLiveByFile[k]    ?? 0) + v;
+    for (const [k, v] of Object.entries(a.allTimeByLang)) totalAllTimeByLang[k] = (totalAllTimeByLang[k] ?? 0) + v;
+    for (const [k, v] of Object.entries(a.allTimeByFile)) totalAllTimeByFile[k] = (totalAllTimeByFile[k] ?? 0) + v;
   }
+  breakdown["__total__"] = {
+    live:    { lang: totalLiveByLang,    file: totalLiveByFile },
+    alltime: { lang: totalAllTimeByLang, file: totalAllTimeByFile },
+  };
   const breakdownJson = JSON.stringify(breakdown).replace(/`/g, "\\`");
 
   const rows = authors
@@ -71,6 +85,11 @@ export function buildAuthorsHtml(
   h2 { margin: 0; font-size: 1.1em; font-weight: 600; }
   .totals { font-size: 0.82em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
   .totals span { margin-left: 14px; }
+  .totals .loc-cell { cursor: pointer; }
+  .totals .loc-cell:hover { color: var(--vscode-foreground); text-decoration: underline dotted; }
+  .total-detail { display: none; margin: 0 0 16px 0; padding: 8px 0;
+                  border-bottom: 1px solid var(--vscode-panel-border); }
+  .total-detail.open { display: block; }
   table { border-collapse: collapse; width: 100%; }
   th { padding: 3px 10px 8px; text-align: left; font-size: 0.8em; font-weight: 600;
        text-transform: uppercase; letter-spacing: 0.04em;
@@ -132,9 +151,16 @@ export function buildAuthorsHtml(
   <div class="header">
     <h2>${esc(title)}</h2>
     <div class="totals">
-      <span>${totalLive.toLocaleString()} live loc</span>
-      <span>${totalAllTime.toLocaleString()} all-time loc</span>
+      <span class="loc-cell" data-email="__total__" data-type="live">${totalLive.toLocaleString()} live loc</span>
+      <span class="loc-cell" data-email="__total__" data-type="alltime">${totalAllTime.toLocaleString()} all-time loc</span>
     </div>
+  </div>
+  <div class="total-detail" id="total-detail">
+    <div class="detail-tabs">
+      <button class="tab-btn active" id="total-tab-lang" onclick="switchTotalTab('lang')">By Language</button>
+      <button class="tab-btn" id="total-tab-file" onclick="switchTotalTab('file')">By File</button>
+    </div>
+    <div class="detail-list" id="total-detail-list"></div>
   </div>
   <table>
     <tbody>${rows}</tbody>
@@ -192,9 +218,39 @@ export function buildAuthorsHtml(
       openEmail = null; openType = null;
     }
 
+    let openTotalType = null;
+    let openTotalTab = 'lang';
+
+    function showTotalDetail(type, tab) {
+      const panel = document.getElementById('total-detail');
+      const listEl = document.getElementById('total-detail-list');
+      if (openTotalType === type && panel.classList.contains('open')) {
+        panel.classList.remove('open');
+        openTotalType = null;
+        return;
+      }
+      openTotalType = type; openTotalTab = tab;
+      document.getElementById('total-tab-lang').classList.toggle('active', tab === 'lang');
+      document.getElementById('total-tab-file').classList.toggle('active', tab === 'file');
+      renderDetailList(listEl, '__total__', type, tab);
+      panel.classList.add('open');
+    }
+
+    function switchTotalTab(tab) {
+      if (tab === openTotalTab || openTotalType === null) return;
+      openTotalTab = tab;
+      document.getElementById('total-tab-lang').classList.toggle('active', tab === 'lang');
+      document.getElementById('total-tab-file').classList.toggle('active', tab === 'file');
+      renderDetailList(document.getElementById('total-detail-list'), '__total__', openTotalType, tab);
+    }
+
     document.querySelectorAll('.loc-cell').forEach(cell => {
       cell.addEventListener('click', () => {
         const { email, type } = cell.dataset;
+        if (email === '__total__') {
+          showTotalDetail(type, openTotalTab);
+          return;
+        }
         if (openEmail === email && openType === type) {
           hideDetail();
         } else {
