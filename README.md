@@ -2,7 +2,7 @@
 
 Visualize git blame directly in the editor gutter. Each line gets a colored block whose hue is tied to its author. Older commits fade toward grey so recent work stands out at a glance. Hover any line to see the full commit details.
 
----
+![Overview of the extension showing a source file with colored gutter blocks on every line. Each author has a distinct hue; more recent lines are vivid while older lines are desaturated towards grey.](images/overview.png)
 
 ## Features
 
@@ -24,6 +24,8 @@ Saturation scales with the `gitBlameColors.saturation` setting. The minimum is a
 
 The age window controls how much history is spread across the 8 buckets. By default it scales to the age of the oldest commit in the repo (`ageWindowDays = 0`). Anything older than the window is clamped to the lowest bucket.
 
+![Close-up of the gutter showing a file with two authors. One author's lines are a vivid blue, the other's a vivid orange. Lines from months ago are washed-out versions of the same hues.](images/gutter-age.png)
+
 ### Hover for commit details
 Hover over any line to see:
 - Short commit hash
@@ -32,6 +34,8 @@ Hover over any line to see:
 - Commit summary message
 
 If you have GitLens, git-graph, or githistory installed the extension defers hover to them to avoid duplication.
+
+![Hover tooltip over a blamed line showing the short commit hash, author name and email, the commit date with a relative timestamp like "3d ago", and the commit message summary.](images/hover.png)
 
 ### Author color management
 Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every contributor in the repository. Each row shows:
@@ -44,6 +48,10 @@ Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every 
 
 Click **Apply** to save all hue changes, **Cancel** to discard.
 
+![The Show Authors panel. A table with one row per contributor. Each row has 8 small colored swatches fading from vivid to grey, the author name and email, live LOC and all-time LOC numbers (which are clickable), and a rainbow hue slider. Action buttons Apply, Reset All, and Cancel are at the bottom.](images/authors-panel.png)
+
+![The LOC breakdown dropdown open on a contributor's live LOC cell. Two tabs are visible: "By Language" (active) showing TypeScript 1 243, Java 310, etc., and "By File". The list is scrollable.](images/loc-breakdown.png)
+
 ### Age window
 Use **Git Blame Colors: Set Age Window** to set how many days of history are spread across the 8 color buckets. Set to `0` (default) to always scale to the age of the oldest commit in the repo.
 
@@ -53,7 +61,6 @@ Quickly hide and show all blame decorations without reloading.
 ### Manual refresh
 Force a re-run of git blame on the current file (useful after amending commits or rebasing).
 
----
 
 ## Commands
 
@@ -66,7 +73,6 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 | `Git Blame Colors: Show Authors` | Open the author color management panel |
 | `Git Blame Colors: Set Age Window` | Set the age window in days (0 = scale to repo age) |
 
----
 
 ## Settings
 
@@ -77,7 +83,6 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 | `gitBlameColors.ageWindowDays` | `0` | Days of history spread across the 8 age buckets. `0` scales to the oldest commit in the repo. If the repo is younger than the window, the window shrinks to fit. |
 | `gitBlameColors.authorHues` | `{}` | Custom hue overrides per author email, e.g. `{"alice@example.com": 210}` |
 
----
 
 ## Requirements
 
@@ -85,7 +90,6 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 - Git must be available on `PATH`
 - The file must be inside a git repository
 
----
 
 ## Installation
 
@@ -155,7 +159,6 @@ vsce package
 code --install-extension git-blame-colors-*.vsix
 ```
 
----
 
 ## Uninstalling
 
@@ -165,7 +168,6 @@ Open the Extensions view, find **Git Blame Colors**, click the gear icon, and ch
 code --uninstall-extension mashdtu.git-blame-colors
 ```
 
----
 
 ## How it works
 
