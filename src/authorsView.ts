@@ -14,6 +14,8 @@ export function buildAuthorsHtml(
   light: number,
 ): string {
   const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
+  const totalLive = authors.reduce((s, a) => s + a.repoLines, 0);
+  const totalAllTime = authors.reduce((s, a) => s + a.totalLines, 0);
   const rows = authors
     .map((a) => {
       const ageDots = SAT_LEVELS.map(
@@ -39,8 +41,11 @@ export function buildAuthorsHtml(
 <html><head><meta charset="UTF-8"><style>
   body { font-family: var(--vscode-font-family); background: var(--vscode-editor-background);
          color: var(--vscode-foreground); padding: 24px 32px; margin: 0; }
-  h2 { margin-top: 0; font-size: 1.1em; font-weight: 600;
-       border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; margin-bottom: 16px; }
+  .header { display: flex; align-items: baseline; justify-content: space-between;
+             border-bottom: 1px solid var(--vscode-panel-border); padding-bottom: 10px; margin-bottom: 16px; }
+  h2 { margin: 0; font-size: 1.1em; font-weight: 600; }
+  .totals { font-size: 0.82em; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+  .totals span { margin-left: 14px; }
   table { border-collapse: collapse; width: 100%; }
   th { padding: 3px 10px 8px; text-align: left; font-size: 0.8em; font-weight: 600;
        text-transform: uppercase; letter-spacing: 0.04em;
@@ -78,7 +83,13 @@ export function buildAuthorsHtml(
            padding: 3px 8px; border: 1px solid var(--vscode-panel-border); }
   .reset:hover { color: var(--vscode-foreground); border-color: var(--vscode-foreground); }
 </style></head><body>
-  <h2>Git Blame Author Colors</h2>
+  <div class="header">
+    <h2>Git Blame Author Colors</h2>
+    <div class="totals">
+      <span>${totalLive.toLocaleString()} live loc</span>
+      <span>${totalAllTime.toLocaleString()} all-time loc</span>
+    </div>
+  </div>
   <table>
     <tbody>${rows}</tbody>
   </table>

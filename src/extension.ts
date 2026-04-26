@@ -452,7 +452,9 @@ export function activate(context: vscode.ExtensionContext): void {
         authorMap.get(info.authorEmail)!.lines++;
       }
 
-      const authors = [...authorMap.values()].sort((a, b) => b.repoLines - a.repoLines);
+      const authors = [...authorMap.values()]
+        .filter((a) => a.totalLines > 0)
+        .sort((a, b) => b.repoLines - a.repoLines);
       const result = await showAuthorsPanel(authors, sat, light);
       if (!result) return;
 
