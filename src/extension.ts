@@ -217,7 +217,6 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  // ── shared helper ──────────────────────────────────────────────────────────
   async function applyHueResult(
     result: PanelResult,
     cfg: vscode.WorkspaceConfiguration,
@@ -248,7 +247,6 @@ export function activate(context: vscode.ExtensionContext): void {
       const light = cfg.get<number>("lightness", 56);
       const authorHues = cfg.get<Record<string, number>>("authorHues", {});
 
-      // Resolve repo root: prefer active file, fall back to first workspace folder
       const fallbackDir =
         editor?.document.uri.fsPath
           ? path.dirname(editor.document.uri.fsPath)
