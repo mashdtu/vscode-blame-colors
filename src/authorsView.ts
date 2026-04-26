@@ -87,6 +87,8 @@ export function buildAuthorsHtml(
   .totals span { margin-left: 14px; }
   .totals .loc-cell { cursor: pointer; }
   .totals .loc-cell:hover { color: var(--vscode-foreground); text-decoration: underline dotted; }
+  .totals .loc-cell.active { color: var(--vscode-foreground); font-weight: 600;
+                              border-bottom: 2px solid var(--vscode-focusBorder); }
   .total-detail { display: none; margin: 0 0 16px 0; padding: 8px 0;
                   border-bottom: 1px solid var(--vscode-panel-border); }
   .total-detail.open { display: block; }
@@ -106,6 +108,8 @@ export function buildAuthorsHtml(
   .total { opacity: 0.7; }
   .loc-cell { cursor: pointer; user-select: none; }
   .loc-cell:hover { color: var(--vscode-foreground); text-decoration: underline dotted; }
+  .loc-cell.active { color: var(--vscode-foreground); font-weight: 600;
+                     border-bottom: 2px solid var(--vscode-focusBorder); }
   .hue-slider { -webkit-appearance: none; appearance: none; width: 140px; height: 14px;
                 border-radius: 7px; cursor: pointer; border: none; outline: none;
                 background: linear-gradient(to right,
@@ -121,7 +125,7 @@ export function buildAuthorsHtml(
   tr.author-detail { display: none; }
   tr.author-detail.open { display: table-row; }
   tr.author-detail td { padding: 0; }
-  .detail-panel { padding: 6px 10px 12px 106px; border-bottom: 1px solid var(--vscode-panel-border); }
+  .detail-panel { padding: 6px 10px 12px 10px; border-bottom: 1px solid var(--vscode-panel-border); }
   .detail-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
   .tab-btn { padding: 2px 10px; font-size: 0.8em; background: none;
              border: 1px solid var(--vscode-panel-border); border-radius: 3px;
@@ -129,11 +133,12 @@ export function buildAuthorsHtml(
   .tab-btn.active { background: var(--vscode-button-background);
                     color: var(--vscode-button-foreground);
                     border-color: transparent; }
-  .detail-list { max-height: 160px; overflow-y: auto; }
-  .detail-item { display: flex; justify-content: space-between; align-items: center;
-                 font-size: 0.85em; padding: 2px 0; color: var(--vscode-descriptionForeground); }
-  .detail-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
-  .detail-count { white-space: nowrap; }
+  .detail-list { max-height: 160px; overflow-y: auto; display: grid; grid-template-columns: 1fr auto; column-gap: 16px; }
+  .detail-item { display: contents; }
+  .detail-name { padding: 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                 font-size: 0.85em; color: var(--vscode-descriptionForeground); }
+  .detail-count { padding: 2px 0; text-align: right; font-size: 0.85em;
+                  color: var(--vscode-descriptionForeground); white-space: nowrap; }
   .actions { margin-top: 20px; display: flex; gap: 10px; }
   button { padding: 7px 22px; font-size: 1em; cursor: pointer; border: none; border-radius: 4px; }
   .ok { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
@@ -197,23 +202,35 @@ export function buildAuthorsHtml(
       ).join('');
     }
 
-    function showDetail(email, type, tab) {
+    function showDetail(email, type, tab, anchorCell) {
       if (openEmail) {
         const prev = document.querySelector(\`.author-detail[data-email="\${CSS.escape(openEmail)}"]\`);
         if (prev) prev.classList.remove('open');
       }
+      if (openEmail) setActiveLoc(openEmail, openType, false);
       openEmail = email; openType = type; openTab = tab;
       const row = document.querySelector(\`.author-detail[data-email="\${CSS.escape(email)}"]\`);
       if (!row) return;
       row.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
       renderDetailList(row.querySelector('.detail-list'), email, type, tab);
+      if (anchorCell) {
+        row.querySelector('.detail-panel').style.paddingLeft = Math.max(10, anchorCell.offsetLeft) + 'px';
+      }
       row.classList.add('open');
+      setActiveLoc(email, type, true);
+    }
+
+    function setActiveLoc(email, type, active) {
+      if (!email) return;
+      document.querySelectorAll(\`.loc-cell[data-email="\${CSS.escape(email)}"][data-type="\${type}"]\`)
+        .forEach(el => el.classList.toggle('active', active));
     }
 
     function hideDetail() {
       if (openEmail) {
         const row = document.querySelector(\`.author-detail[data-email="\${CSS.escape(openEmail)}"]\`);
         if (row) row.classList.remove('open');
+        setActiveLoc(openEmail, openType, false);
       }
       openEmail = null; openType = null;
     }
@@ -226,14 +243,17 @@ export function buildAuthorsHtml(
       const listEl = document.getElementById('total-detail-list');
       if (openTotalType === type && panel.classList.contains('open')) {
         panel.classList.remove('open');
+        setActiveLoc('__total__', openTotalType, false);
         openTotalType = null;
         return;
       }
+      if (openTotalType) setActiveLoc('__total__', openTotalType, false);
       openTotalType = type; openTotalTab = tab;
       document.getElementById('total-tab-lang').classList.toggle('active', tab === 'lang');
       document.getElementById('total-tab-file').classList.toggle('active', tab === 'file');
       renderDetailList(listEl, '__total__', type, tab);
       panel.classList.add('open');
+      setActiveLoc('__total__', type, true);
     }
 
     function switchTotalTab(tab) {
@@ -254,7 +274,7 @@ export function buildAuthorsHtml(
         if (openEmail === email && openType === type) {
           hideDetail();
         } else {
-          showDetail(email, type, openEmail === email ? openTab : 'lang');
+          showDetail(email, type, openEmail === email ? openTab : 'lang', cell);
         }
       });
     });

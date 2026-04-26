@@ -48,6 +48,13 @@ Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every 
 
 Click **Apply** to save all hue changes, **Cancel** to discard.
 
+#### LOC breakdown
+Click any **Live LOC** or **All-time LOC** number — on a per-author row or on the header totals — to open a breakdown panel directly beneath it. The panel has two tabs:
+- **By Language** — lines grouped by file extension (TypeScript, Python, etc.)
+- **By File** — lines per file, sorted descending
+
+The active cell is highlighted with a bottom border so you can see which metric is expanded. Click the same cell again to collapse the panel.
+
 ![The Show Authors panel. A table with one row per contributor. Each row has 8 small colored swatches fading from vivid to grey, the author name and email, live LOC and all-time LOC numbers (which are clickable), and a rainbow hue slider. Action buttons Apply, Reset All, and Cancel are at the bottom.](images/authors-panel.png)
 
 ![The LOC breakdown dropdown open on a contributor's live LOC cell. Two tabs are visible: "By Language" (active) showing TypeScript 1 243, Java 310, etc., and "By File". The list is scrollable.](images/loc-breakdown.png)
