@@ -20,16 +20,17 @@ export function showAuthorsPanel(
   authors: AuthorEntry[],
   sat: number,
   light: number,
+  title = "Git Blame Author Colors",
 ): Promise<PanelResult | undefined> {
   return new Promise((resolve) => {
     const panel = vscode.window.createWebviewPanel(
       "gitBlameAuthors",
-      "Git Blame Author Colors",
+      title,
       vscode.ViewColumn.Active,
       { enableScripts: true },
     );
 
-    panel.webview.html = buildAuthorsHtml(authors, sat, light);
+    panel.webview.html = buildAuthorsHtml(authors, sat, light, title);
 
     let resolved = false;
     panel.webview.onDidReceiveMessage((msg) => {

@@ -12,6 +12,7 @@ export function buildAuthorsHtml(
   authors: AuthorEntry[],
   sat: number,
   light: number,
+  title = "Git Blame Author Colors",
 ): string {
   const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
   const totalLive = authors.reduce((s, a) => s + a.repoLines, 0);
@@ -84,7 +85,7 @@ export function buildAuthorsHtml(
   .reset:hover { color: var(--vscode-foreground); border-color: var(--vscode-foreground); }
 </style></head><body>
   <div class="header">
-    <h2>Git Blame Author Colors</h2>
+    <h2>${esc(title)}</h2>
     <div class="totals">
       <span>${totalLive.toLocaleString()} live loc</span>
       <span>${totalAllTime.toLocaleString()} all-time loc</span>

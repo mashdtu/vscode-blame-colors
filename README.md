@@ -34,7 +34,7 @@ Hover over any line to see:
 If you have GitLens, git-graph, or githistory installed the extension defers hover to them to avoid duplication.
 
 ### Author color management
-Open the **Show Authors** panel (`Git Blame Colors: Show Authors`) to see every contributor in the repository. Each row shows:
+Open the **Show Authors (Repo)** panel (`Git Blame Colors: Show Authors (Repo)`) to see every contributor in the repository, or **Show Authors (File)** (`Git Blame Colors: Show Authors (File)`) to see only contributors to the current file. Each row shows:
 - 8 age-preview swatches showing how the author's color fades over time
 - Author name and email
 - **Live LOC**: lines currently attributed to this author across the whole repo (derived from `git blame`)
@@ -63,7 +63,8 @@ Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and search for:
 |---|---|
 | `Git Blame Colors: Toggle` | Show or hide all gutter blame blocks |
 | `Git Blame Colors: Refresh` | Re-run blame on the current file |
-| `Git Blame Colors: Show Authors` | Open the author color management panel |
+| `Git Blame Colors: Show Authors (Repo)` | Open the author panel showing all contributors across the whole repository |
+| `Git Blame Colors: Show Authors (File)` | Open the author panel filtered to contributors in the current file |
 | `Git Blame Colors: Set Age Window` | Set the age window in days (0 = scale to repo age) |
 
 ---
