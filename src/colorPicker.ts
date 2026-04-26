@@ -7,6 +7,10 @@ export interface AuthorEntry {
   lines: number;
   repoLines: number;
   totalLines: number;
+  liveByFile: Record<string, number>;
+  liveByLang: Record<string, number>;
+  allTimeByFile: Record<string, number>;
+  allTimeByLang: Record<string, number>;
   hue: number;
   defaultHue: number;
 }

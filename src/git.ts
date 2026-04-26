@@ -73,10 +73,16 @@ function parse(output: string): Map<number, BlameInfo> {
   return result;
 }
 
+export interface LocBreakdown {
+  totals: Map<string, number>;
+  byFile: Map<string, Map<string, number>>;
+}
+
 export async function getRepoLinesByAuthor(
   repoRoot: string,
-): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+): Promise<LocBreakdown> {
+  const totals = new Map<string, number>();
+  const byFile = new Map<string, Map<string, number>>();
   try {
     const { stdout } = await execFileAsync(
       "git",
@@ -88,20 +94,26 @@ export async function getRepoLinesByAuthor(
       if (line.startsWith("AUTHOR:")) {
         currentEmail = line.slice(7).trim();
       } else {
-        const m = line.match(/^(\d+)\t\d+\t/);
+        const m = line.match(/^(\d+)\t\d+\t(.+)$/);
         if (m && currentEmail) {
-          result.set(currentEmail, (result.get(currentEmail) ?? 0) + parseInt(m[1], 10));
+          const added = parseInt(m[1], 10);
+          const file = m[2].trim();
+          totals.set(currentEmail, (totals.get(currentEmail) ?? 0) + added);
+          if (!byFile.has(currentEmail)) byFile.set(currentEmail, new Map());
+          const fm = byFile.get(currentEmail)!;
+          fm.set(file, (fm.get(file) ?? 0) + added);
         }
       }
     }
   } catch { /* non-git dir or error */ }
-  return result;
+  return { totals, byFile };
 }
 
 export async function getRepoCurrentLinesByAuthor(
   repoRoot: string,
-): Promise<Map<string, number>> {
-  const result = new Map<string, number>();
+): Promise<LocBreakdown> {
+  const totals = new Map<string, number>();
+  const byFile = new Map<string, Map<string, number>>();
   try {
     const EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
     const { stdout: diffOut } = await execFileAsync(
@@ -129,7 +141,10 @@ export async function getRepoCurrentLinesByAuthor(
             for (const line of stdout.split("\n")) {
               if (line.startsWith("author-mail ")) {
                 const email = line.slice(12).trim().replace(/^<|>$/g, "");
-                result.set(email, (result.get(email) ?? 0) + 1);
+                totals.set(email, (totals.get(email) ?? 0) + 1);
+                if (!byFile.has(email)) byFile.set(email, new Map());
+                const fm = byFile.get(email)!;
+                fm.set(file, (fm.get(file) ?? 0) + 1);
               }
             }
           } catch { /* error blaming file */ }
@@ -137,7 +152,7 @@ export async function getRepoCurrentLinesByAuthor(
       );
     }
   } catch { /* non-git dir */ }
-  return result;
+  return { totals, byFile };
 }
 
 export async function getRepoAuthorNames(

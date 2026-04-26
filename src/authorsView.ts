@@ -17,6 +17,19 @@ export function buildAuthorsHtml(
   const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
   const totalLive = authors.reduce((s, a) => s + a.repoLines, 0);
   const totalAllTime = authors.reduce((s, a) => s + a.totalLines, 0);
+
+  const breakdown: Record<string, {
+    live: { lang: Record<string, number>; file: Record<string, number> };
+    alltime: { lang: Record<string, number>; file: Record<string, number> };
+  }> = {};
+  for (const a of authors) {
+    breakdown[a.email] = {
+      live: { lang: a.liveByLang, file: a.liveByFile },
+      alltime: { lang: a.allTimeByLang, file: a.allTimeByFile },
+    };
+  }
+  const breakdownJson = JSON.stringify(breakdown).replace(/`/g, "\\`");
+
   const rows = authors
     .map((a) => {
       const ageDots = SAT_LEVELS.map(
@@ -30,10 +43,21 @@ export function buildAuthorsHtml(
         <td rowspan="2" style="vertical-align:middle"><button class="reset" data-email="${esc(a.email)}">Reset</button></td>
       </tr>
       <tr class="author-bottom" data-email="${esc(a.email)}">
-        <td class="lines">${a.repoLines.toLocaleString()} live loc</td>
-        <td class="lines total">${a.totalLines.toLocaleString()} all-time loc</td>
+        <td class="lines loc-cell" data-email="${esc(a.email)}" data-type="live">${a.repoLines.toLocaleString()} live loc</td>
+        <td class="lines total loc-cell" data-email="${esc(a.email)}" data-type="alltime">${a.totalLines.toLocaleString()} all-time loc</td>
         <td><input type="range" min="0" max="359" value="${a.hue}" class="hue-slider"
              data-email="${esc(a.email)}" data-default-hue="${a.defaultHue}"></td>
+      </tr>
+      <tr class="author-detail" data-email="${esc(a.email)}">
+        <td colspan="5">
+          <div class="detail-panel">
+            <div class="detail-tabs">
+              <button class="tab-btn active" data-tab="lang">By Language</button>
+              <button class="tab-btn" data-tab="file">By File</button>
+            </div>
+            <div class="detail-list"></div>
+          </div>
+        </td>
       </tr>`;
     })
     .join("\n");
@@ -61,6 +85,8 @@ export function buildAuthorsHtml(
   .email { color: var(--vscode-descriptionForeground); font-size: 0.9em; }
   .lines { color: var(--vscode-descriptionForeground); font-size: 0.9em; white-space: nowrap; }
   .total { opacity: 0.7; }
+  .loc-cell { cursor: pointer; user-select: none; }
+  .loc-cell:hover { color: var(--vscode-foreground); text-decoration: underline dotted; }
   .hue-slider { -webkit-appearance: none; appearance: none; width: 140px; height: 14px;
                 border-radius: 7px; cursor: pointer; border: none; outline: none;
                 background: linear-gradient(to right,
@@ -73,10 +99,29 @@ export function buildAuthorsHtml(
   tr.author-top:hover, tr.author-top:hover + tr.author-bottom,
   tr.author-top:has(+ tr.author-bottom:hover), tr.author-bottom:hover { background: var(--vscode-list-hoverBackground); }
   tr.is-reset { opacity: 0.5; }
+  tr.author-detail { display: none; }
+  tr.author-detail.open { display: table-row; }
+  tr.author-detail td { padding: 0; }
+  .detail-panel { padding: 6px 10px 12px 106px; border-bottom: 1px solid var(--vscode-panel-border); }
+  .detail-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .tab-btn { padding: 2px 10px; font-size: 0.8em; background: none;
+             border: 1px solid var(--vscode-panel-border); border-radius: 3px;
+             cursor: pointer; color: var(--vscode-descriptionForeground); }
+  .tab-btn.active { background: var(--vscode-button-background);
+                    color: var(--vscode-button-foreground);
+                    border-color: transparent; }
+  .detail-list { max-height: 160px; overflow-y: auto; }
+  .detail-item { display: flex; justify-content: space-between; align-items: center;
+                 font-size: 0.85em; padding: 2px 0; color: var(--vscode-descriptionForeground); }
+  .detail-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-right: 10px; }
+  .detail-count { white-space: nowrap; }
   .actions { margin-top: 20px; display: flex; gap: 10px; }
   button { padding: 7px 22px; font-size: 1em; cursor: pointer; border: none; border-radius: 4px; }
   .ok { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
   .ok:hover { background: var(--vscode-button-hoverBackground); }
+  .reset-all { background: var(--vscode-button-secondaryBackground);
+               color: var(--vscode-button-secondaryForeground); }
+  .reset-all:hover { background: var(--vscode-button-secondaryHoverBackground); }
   .cancel { background: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground); }
   .cancel:hover { background: var(--vscode-button-secondaryHoverBackground); }
@@ -96,14 +141,81 @@ export function buildAuthorsHtml(
   </table>
   <div class="actions">
     <button class="ok" id="ok">Apply</button>
+    <button class="reset-all" id="reset-all">Reset All</button>
     <button class="cancel" id="cancel">Cancel</button>
   </div>
   <script>
     const SAT = ${sat};
     const LIGHT = ${light};
     const SAT_LEVELS = [1.0, 0.89, 0.77, 0.66, 0.54, 0.43, 0.31, 0.20];
+    const BREAKDOWN = \`${breakdownJson}\`;
+    const BD = JSON.parse(BREAKDOWN);
     const vscode = acquireVsCodeApi();
     const resetSet = new Set();
+    let openEmail = null;
+    let openType = null;
+    let openTab = 'lang';
+
+    function renderDetailList(listEl, email, type, tab) {
+      const src = BD[email]?.[type]?.[tab] ?? {};
+      const entries = Object.entries(src).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) {
+        listEl.innerHTML = '<div class="detail-item"><span class="detail-name">No data</span></div>';
+        return;
+      }
+      listEl.innerHTML = entries.map(([name, count]) =>
+        \`<div class="detail-item">
+          <span class="detail-name">\${name}</span>
+          <span class="detail-count">\${Number(count).toLocaleString()}</span>
+        </div>\`
+      ).join('');
+    }
+
+    function showDetail(email, type, tab) {
+      if (openEmail) {
+        const prev = document.querySelector(\`.author-detail[data-email="\${CSS.escape(openEmail)}"]\`);
+        if (prev) prev.classList.remove('open');
+      }
+      openEmail = email; openType = type; openTab = tab;
+      const row = document.querySelector(\`.author-detail[data-email="\${CSS.escape(email)}"]\`);
+      if (!row) return;
+      row.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      renderDetailList(row.querySelector('.detail-list'), email, type, tab);
+      row.classList.add('open');
+    }
+
+    function hideDetail() {
+      if (openEmail) {
+        const row = document.querySelector(\`.author-detail[data-email="\${CSS.escape(openEmail)}"]\`);
+        if (row) row.classList.remove('open');
+      }
+      openEmail = null; openType = null;
+    }
+
+    document.querySelectorAll('.loc-cell').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const { email, type } = cell.dataset;
+        if (openEmail === email && openType === type) {
+          hideDetail();
+        } else {
+          showDetail(email, type, openEmail === email ? openTab : 'lang');
+        }
+      });
+    });
+
+    document.addEventListener('click', e => {
+      const tabBtn = e.target.closest('.tab-btn');
+      if (!tabBtn || !openEmail) return;
+      const tab = tabBtn.dataset.tab;
+      if (tab === openTab) return;
+      openTab = tab;
+      const row = document.querySelector(\`.author-detail[data-email="\${CSS.escape(openEmail)}"]\`);
+      if (row) {
+        row.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        renderDetailList(row.querySelector('.detail-list'), openEmail, openType, tab);
+      }
+    });
+
     function updateAgeDots(row, hue) {
       const dots = row.querySelectorAll('.age-dot');
       SAT_LEVELS.forEach((m, i) => {
@@ -130,6 +242,17 @@ export function buildAuthorsHtml(
         bottomRow.classList.add('is-reset');
         topRow.classList.add('is-reset');
         resetSet.add(btn.dataset.email);
+      });
+    });
+    document.getElementById('reset-all').addEventListener('click', () => {
+      document.querySelectorAll('.author-top').forEach(topRow => {
+        const bottomRow = topRow.nextElementSibling;
+        const slider = bottomRow.querySelector('.hue-slider');
+        slider.value = slider.dataset.defaultHue;
+        updateAgeDots(topRow, slider.dataset.defaultHue);
+        topRow.classList.add('is-reset');
+        bottomRow.classList.add('is-reset');
+        resetSet.add(slider.dataset.email);
       });
     });
     document.getElementById('ok').addEventListener('click', () => {

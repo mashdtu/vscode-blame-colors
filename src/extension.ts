@@ -15,6 +15,34 @@ import { blameHover } from "./hover.js";
 
 const execFileAsync = promisify(execFile);
 
+function langFromFile(file: string): string {
+  const ext = file.slice(file.lastIndexOf(".")).toLowerCase();
+  const map: Record<string, string> = {
+    ".ts": "TypeScript", ".tsx": "TypeScript",
+    ".js": "JavaScript", ".jsx": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript",
+    ".py": "Python", ".java": "Java", ".cs": "C#",
+    ".cpp": "C++", ".cc": "C++", ".cxx": "C++", ".hpp": "C++",
+    ".c": "C", ".h": "C/C++ Header",
+    ".go": "Go", ".rs": "Rust", ".rb": "Ruby", ".php": "PHP",
+    ".swift": "Swift", ".kt": "Kotlin", ".kts": "Kotlin", ".scala": "Scala",
+    ".html": "HTML", ".htm": "HTML",
+    ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
+    ".json": "JSON", ".xml": "XML", ".yaml": "YAML", ".yml": "YAML",
+    ".md": "Markdown", ".sh": "Shell", ".bash": "Shell", ".zsh": "Shell",
+    ".sql": "SQL", ".vue": "Vue", ".svelte": "Svelte",
+  };
+  return map[ext] ?? (ext.length > 1 ? ext.slice(1).toUpperCase() : "Other");
+}
+
+function fileMapToLang(fm: Map<string, number>): Record<string, number> {
+  const result: Record<string, number> = {};
+  for (const [file, count] of fm) {
+    const lang = langFromFile(file);
+    result[lang] = (result[lang] ?? 0) + count;
+  }
+  return result;
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const decorationTypes = new Map<
     string,
@@ -241,27 +269,35 @@ export function activate(context: vscode.ExtensionContext): void {
         getRepoAuthorNames(repoRoot),
       ]);
 
-      for (const [email, totalLines] of repoLines) {
+      for (const [email, totalLines] of repoLines.totals) {
         if (!authorMap.has(email)) {
           authorMap.set(email, {
             author: authorNames.get(email) ?? email,
             email,
             lines: 0,
-            repoLines: repoCurrentLines.get(email) ?? 0,
+            repoLines: repoCurrentLines.totals.get(email) ?? 0,
             totalLines,
+            liveByFile: Object.fromEntries(repoCurrentLines.byFile.get(email) ?? []),
+            liveByLang: fileMapToLang(repoCurrentLines.byFile.get(email) ?? new Map()),
+            allTimeByFile: Object.fromEntries(repoLines.byFile.get(email) ?? []),
+            allTimeByLang: fileMapToLang(repoLines.byFile.get(email) ?? new Map()),
             hue: authorHues[email] ?? authorHue(email),
             defaultHue: authorHue(email),
           });
         }
       }
-      for (const [email, live] of repoCurrentLines) {
+      for (const [email, live] of repoCurrentLines.totals) {
         if (!authorMap.has(email)) {
           authorMap.set(email, {
             author: authorNames.get(email) ?? email,
             email,
             lines: 0,
             repoLines: live,
-            totalLines: repoLines.get(email) ?? 0,
+            totalLines: repoLines.totals.get(email) ?? 0,
+            liveByFile: Object.fromEntries(repoCurrentLines.byFile.get(email) ?? []),
+            liveByLang: fileMapToLang(repoCurrentLines.byFile.get(email) ?? new Map()),
+            allTimeByFile: Object.fromEntries(repoLines.byFile.get(email) ?? []),
+            allTimeByLang: fileMapToLang(repoLines.byFile.get(email) ?? new Map()),
             hue: authorHues[email] ?? authorHue(email),
             defaultHue: authorHue(email),
           });
@@ -275,8 +311,12 @@ export function activate(context: vscode.ExtensionContext): void {
               author: info.author,
               email: info.authorEmail,
               lines: 0,
-              repoLines: repoCurrentLines.get(info.authorEmail) ?? 0,
-              totalLines: repoLines.get(info.authorEmail) ?? 0,
+              repoLines: repoCurrentLines.totals.get(info.authorEmail) ?? 0,
+              totalLines: repoLines.totals.get(info.authorEmail) ?? 0,
+              liveByFile: Object.fromEntries(repoCurrentLines.byFile.get(info.authorEmail) ?? []),
+              liveByLang: fileMapToLang(repoCurrentLines.byFile.get(info.authorEmail) ?? new Map()),
+              allTimeByFile: Object.fromEntries(repoLines.byFile.get(info.authorEmail) ?? []),
+              allTimeByLang: fileMapToLang(repoLines.byFile.get(info.authorEmail) ?? new Map()),
               hue: authorHues[info.authorEmail] ?? authorHue(info.authorEmail),
               defaultHue: authorHue(info.authorEmail),
             });
